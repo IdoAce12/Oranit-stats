@@ -1,0 +1,40 @@
+// Service worker פשוט: מטמון של מעטפת האפליקציה כדי שתיפתח גם בלי רשת.
+// שים לב: הנתונים עצמם נשמרים ב-localStorage (תור אירועים) ומסתנכרנים ל-Supabase.
+
+const CACHE = "scout-shell-v1";
+const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener("fetch", (event) => {
+  const req = event.request;
+  if (req.method !== "GET") return;
+
+  const url = new URL(req.url);
+  // בקשות ל-Supabase תמיד עוברות לרשת (לא ממטמנים נתונים)
+  if (url.origin !== self.location.origin) return;
+
+  // אסטרטגיה: network-first עם נפילה למטמון (כדי לקבל קוד עדכני כשיש רשת)
+  event.respondWith(
+    fetch(req)
+      .then((res) => {
+        const copy = res.clone();
+        caches.open(CACHE).then((cache) => cache.put(req, copy)).catch(() => {});
+        return res;
+      })
+      .catch(() => caches.match(req).then((cached) => cached || caches.match("/")))
+  );
+});
