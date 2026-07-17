@@ -24,56 +24,92 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-10">
-      <header className="mb-6 text-center">
-        <h1 className="text-2xl font-bold">סקאוט ליגה ג׳</h1>
-        <p className="mt-1 text-sm text-white/60">איסוף חי + ניתוח משחק</p>
-      </header>
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-8 pb-10">
+      <div className="mb-7 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-b from-[var(--accent)] to-[var(--accent-strong)] text-xl font-black text-[#04150e] shadow-lg">
+            S
+          </div>
+          <div>
+            <h1 className="text-xl font-extrabold leading-tight">סקאוט</h1>
+            <p className="text-xs text-[var(--muted)]">ניתוח משחק · ליגה ג׳</p>
+          </div>
+        </div>
+      </div>
 
       <ConfigBanner />
 
-      <Link
-        href="/setup"
-        className="mb-6 block rounded-2xl bg-green-500 px-4 py-4 text-center text-lg font-bold text-black active:scale-[0.98]"
-      >
+      <Link href="/setup" className="btn btn-primary mb-3 w-full py-4 text-lg">
         + משחק חדש
       </Link>
 
-      <h2 className="mb-3 text-sm font-semibold text-white/70">המשחקים שלי</h2>
+      <div className="mb-7 flex gap-3">
+        <Link href="/squad" className="btn btn-ghost flex-1 py-3 text-sm">
+          הסגל שלי
+        </Link>
+        <Link href="/season" className="btn btn-ghost flex-1 py-3 text-sm">
+          טבלה עונתית
+        </Link>
+      </div>
 
-      {loading && <p className="text-white/50">טוען...</p>}
-      {error && <p className="text-red-400">{error}</p>}
+      <h2 className="mb-3 text-sm font-bold text-[var(--muted)]">המשחקים שלי</h2>
+
+      {loading && <p className="text-[var(--muted)]">טוען...</p>}
+      {error && <p className="text-[var(--danger)]">{error}</p>}
       {!loading && !error && matches.length === 0 && (
-        <p className="rounded-xl border border-white/10 bg-white/5 p-4 text-center text-white/50">
-          עדיין אין משחקים. צור משחק חדש כדי להתחיל.
-        </p>
+        <div className="card p-6 text-center text-sm text-[var(--muted)]">
+          עדיין אין משחקים.
+          <br />
+          צור משחק חדש כדי להתחיל לאסוף נתונים.
+        </div>
       )}
 
       <ul className="flex flex-col gap-3">
         {matches.map((m) => (
-          <li
-            key={m.id}
-            className="rounded-2xl border border-white/10 bg-white/5 p-4"
-          >
-            <div className="mb-3">
-              <p className="text-lg font-bold">מול {m.opponent}</p>
-              <p className="text-sm text-white/50">
-                {new Date(m.match_date).toLocaleDateString("he-IL")}
-              </p>
+          <li key={m.id} className="card overflow-hidden">
+            <div className="flex items-center justify-between p-4 pb-3">
+              <div>
+                <p className="text-lg font-extrabold">מול {m.opponent}</p>
+                <p className="text-xs text-[var(--muted)]">
+                  {new Date(m.match_date).toLocaleDateString("he-IL", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+              {m.status === "finished" ? (
+                <span className="chip border-white/10 text-[var(--muted)]">הושלם</span>
+              ) : (
+                <span className="chip border-[var(--accent)]/40 text-[var(--accent)]">
+                  <span className="h-1.5 w-1.5 rounded-full bg-[var(--accent)]" /> חי
+                </span>
+              )}
             </div>
-            <div className="flex gap-2">
-              <Link
-                href={`/live/${m.id}`}
-                className="flex-1 rounded-xl bg-blue-500 py-2.5 text-center font-semibold text-white active:scale-[0.98]"
-              >
-                לייב
-              </Link>
-              <Link
-                href={`/report/${m.id}`}
-                className="flex-1 rounded-xl bg-white/10 py-2.5 text-center font-semibold active:scale-[0.98]"
-              >
-                דוח
-              </Link>
+            <div className="flex gap-px bg-[var(--border)]">
+              {m.status === "finished" ? (
+                <Link
+                  href={`/report/${m.id}`}
+                  className="flex-1 bg-[var(--panel-strong)] py-3 text-center text-sm font-bold text-[var(--accent)] active:bg-white/10"
+                >
+                  דוח
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    href={`/live/${m.id}`}
+                    className="flex-1 bg-[var(--panel-strong)] py-3 text-center text-sm font-bold text-[var(--accent)] active:bg-white/10"
+                  >
+                    לייב
+                  </Link>
+                  <Link
+                    href={`/report/${m.id}`}
+                    className="flex-1 bg-[var(--panel-strong)] py-3 text-center text-sm font-bold active:bg-white/10"
+                  >
+                    דוח
+                  </Link>
+                </>
+              )}
             </div>
           </li>
         ))}

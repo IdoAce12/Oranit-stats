@@ -1,9 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getEvents, getMatch, getPlayers } from "@/lib/db";
+import {
+  addPlayers,
+  addSquadPlayer,
+  finishMatch,
+  getEvents,
+  getMatch,
+  getPlayers,
+  listSquad,
+} from "@/lib/db";
 import {
   deleteRemote,
   enqueue,
@@ -12,6 +20,7 @@ import {
   pendingCount,
   removeFromQueue,
 } from "@/lib/eventQueue";
+import { tapFeedback } from "@/lib/haptics";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
   ACTION_LABELS,
@@ -25,37 +34,49 @@ import {
   Player,
   SHOT_LABELS,
   ShotLocation,
+  SquadPlayer,
+  TEAM_ACTIONS,
   Zone,
   ZONE_LABELS,
 } from "@/lib/types";
 import { MatchClock } from "./MatchClock";
 
-const ACTION_STYLES: Record<ActionType, string> = {
-  ball_loss: "bg-red-500 text-white",
-  tackle: "bg-green-500 text-black",
-  key_pass: "bg-blue-500 text-white",
-  shot: "bg-amber-400 text-black",
-  corner: "bg-white/15 text-white",
-};
+const PRIMARY_ACTIONS: ActionType[] = ["ball_loss", "tackle", "key_pass", "shot"];
+const CORNER_ACTIONS: ActionType[] = ["corner_for", "corner_against"];
 
-const ACTION_ORDER: ActionType[] = ["ball_loss", "tackle", "key_pass", "shot", "corner"];
+const ACTION_BTN: Record<ActionType, string> = {
+  ball_loss: "bg-gradient-to-b from-red-500 to-red-600 text-white shadow-[0_10px_30px_-12px_rgba(239,68,68,0.8)]",
+  tackle: "bg-gradient-to-b from-emerald-400 to-emerald-500 text-[#04150e] shadow-[0_10px_30px_-12px_rgba(16,185,129,0.8)]",
+  key_pass: "bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-[0_10px_30px_-12px_rgba(59,130,246,0.8)]",
+  shot: "bg-gradient-to-b from-amber-400 to-amber-500 text-[#241a00] shadow-[0_10px_30px_-12px_rgba(245,158,11,0.8)]",
+  corner_for: "border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]",
+  corner_against: "border border-red-400/40 bg-red-500/10 text-red-300",
+};
 
 export default function LivePage() {
   const params = useParams<{ matchId: string }>();
+  const router = useRouter();
   const matchId = params.matchId;
 
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [events, setEvents] = useState<LiveEvent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [fatalError, setFatalError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
   const [online, setOnline] = useState(true);
+  const [confirmEnd, setConfirmEnd] = useState(false);
 
-  // מצב השעון - נשמר ומועבר מ-MatchClock
+  const [rosterOpen, setRosterOpen] = useState(false);
+  const [newNum, setNewNum] = useState("");
+  const [newName, setNewName] = useState("");
+  const [alsoSquad, setAlsoSquad] = useState(true);
+  const [rosterBusy, setRosterBusy] = useState(false);
+
   const clockRef = useRef<{ half: Half; minute: number }>({ half: 1, minute: 0 });
 
-  // מצב הפופ-אפ לבחירה מהירה
   const [modalAction, setModalAction] = useState<ActionType | null>(null);
   const [modalPlayerId, setModalPlayerId] = useState<string | null | undefined>(undefined);
 
@@ -64,9 +85,7 @@ export default function LivePage() {
   const trySync = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     const flushed = await flushQueue();
-    if (flushed > 0) {
-      setEvents((prev) => prev.map((e) => ({ ...e, synced: true })));
-    }
+    if (flushed > 0) setEvents((prev) => prev.map((e) => ({ ...e, synced: true })));
     refreshPending();
   }, [refreshPending]);
 
@@ -91,32 +110,39 @@ export default function LivePage() {
     if (!matchId) return;
     if (!isSupabaseConfigured) {
       setLoading(false);
-      setError("Supabase לא מחובר. אי אפשר לטעון את המשחק.");
+      setFatalError("Supabase לא מחובר. אי אפשר לטעון את המשחק.");
       return;
     }
     (async () => {
       try {
-        const [m, ps, evs] = await Promise.all([
+        const [m, ps, evs, sq] = await Promise.all([
           getMatch(matchId),
           getPlayers(matchId),
           getEvents(matchId),
+          listSquad(),
         ]);
+        if (m?.status === "finished") {
+          router.replace(`/report/${matchId}`);
+          return;
+        }
         setMatch(m);
         setPlayers(ps);
+        setSquad(sq);
         const pendingForMatch = getPending().filter((e) => e.match_id === matchId);
         const synced: LiveEvent[] = evs.map((e) => ({ ...e, synced: true }));
-        const local: LiveEvent[] = pendingForMatch.map((e) => ({ ...e, synced: false }));
-        // מיזוג ומניעת כפילויות לפי id
         const seen = new Set(synced.map((e) => e.id));
-        setEvents([...synced, ...local.filter((e) => !seen.has(e.id))]);
+        const local: LiveEvent[] = pendingForMatch
+          .filter((e) => !seen.has(e.id))
+          .map((e) => ({ ...e, synced: false }));
+        setEvents([...synced, ...local]);
         refreshPending();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "שגיאה בטעינה");
+        setFatalError(e instanceof Error ? e.message : "שגיאה בטעינה");
       } finally {
         setLoading(false);
       }
     })();
-  }, [matchId, refreshPending]);
+  }, [matchId, refreshPending, router]);
 
   const commit = useCallback(
     (action: ActionType, playerId: string | null, zone: Zone | null, shot: ShotLocation | null) => {
@@ -134,21 +160,20 @@ export default function LivePage() {
       enqueue(row);
       setEvents((prev) => [...prev, { ...row, synced: false }]);
       refreshPending();
-      // סגירת הפופ-אפ
       setModalAction(null);
       setModalPlayerId(undefined);
-      // ניסיון סנכרון ברקע
+      tapFeedback();
       trySync();
     },
     [matchId, refreshPending, trySync]
   );
 
   const onActionClick = (action: ActionType) => {
-    // קרן היא אירוע קבוצתי - נרשם מיד ללא שחקן
-    if (action === "corner") {
+    if (TEAM_ACTIONS.includes(action)) {
       commit(action, null, null, null);
       return;
     }
+    tapFeedback(8);
     setModalAction(action);
     setModalPlayerId(undefined);
   };
@@ -167,6 +192,7 @@ export default function LivePage() {
   const undoLast = async () => {
     const last = events[events.length - 1];
     if (!last) return;
+    tapFeedback([6, 30, 6]);
     setEvents((prev) => prev.slice(0, -1));
     removeFromQueue(last.id);
     refreshPending();
@@ -178,6 +204,73 @@ export default function LivePage() {
     removeFromQueue(id);
     refreshPending();
     await deleteRemote(id);
+  };
+
+  const endMatch = async () => {
+    await trySync();
+    try {
+      await finishMatch(matchId);
+    } catch {
+      /* גם אם הסימון נכשל, ננווט לדוח */
+    }
+    router.push(`/report/${matchId}`);
+  };
+
+  const availableSquad = useMemo(
+    () =>
+      squad.filter(
+        (s) => s.active && !players.some((p) => p.squad_player_id === s.id)
+      ),
+    [squad, players]
+  );
+
+  const parseShirt = (raw: string): number | null => {
+    const digits = raw.replace(/[^\d]/g, "");
+    if (!digits) return null;
+    const num = parseInt(digits, 10);
+    if (Number.isNaN(num) || num < 0 || num > 99) return null;
+    return num;
+  };
+
+  const addFromSquad = async (s: SquadPlayer) => {
+    setRosterBusy(true);
+    setNotice(null);
+    try {
+      const [added] = await addPlayers(matchId, [
+        { squad_player_id: s.id, shirt_number: s.shirt_number, name: s.name, position: s.position },
+      ]);
+      if (added) setPlayers((prev) => [...prev, added].sort((a, b) => a.shirt_number - b.shirt_number));
+    } catch {
+      setNotice("הוספת שחקן נכשלה");
+    } finally {
+      setRosterBusy(false);
+    }
+  };
+
+  const addNewPlayer = async () => {
+    setNotice(null);
+    const num = parseShirt(newNum);
+    if (num === null) return setNotice("מספר חולצה לא תקין (0–99)");
+    if (!newName.trim()) return setNotice("צריך שם שחקן");
+    setRosterBusy(true);
+    try {
+      let squadId: string | null = null;
+      if (alsoSquad) {
+        const s = await addSquadPlayer({ shirt_number: num, name: newName.trim() });
+        squadId = s.id;
+        setSquad((prev) => [...prev, s].sort((a, b) => a.shirt_number - b.shirt_number));
+      }
+      const [added] = await addPlayers(matchId, [
+        { squad_player_id: squadId, shirt_number: num, name: newName.trim() },
+      ]);
+      if (added) setPlayers((prev) => [...prev, added].sort((a, b) => a.shirt_number - b.shirt_number));
+      setNewNum("");
+      setNewName("");
+    } catch {
+      setNotice("הוספת שחקן נכשלה");
+    } finally {
+      setRosterBusy(false);
+    }
   };
 
   const modalPhase: "player" | "zone" | "box" | null = useMemo(() => {
@@ -194,16 +287,18 @@ export default function LivePage() {
     const p = players.find((x) => x.id === id);
     return p ? `#${p.shirt_number}` : "?";
   };
+  const closeModal = () => {
+    setModalAction(null);
+    setModalPlayerId(undefined);
+  };
 
-  if (loading) {
-    return <main className="p-6 text-center text-white/60">טוען משחק...</main>;
-  }
+  if (loading) return <main className="p-8 text-center text-[var(--muted)]">טוען משחק...</main>;
 
-  if (error) {
+  if (fatalError) {
     return (
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6">
-        <p className="rounded-xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">{error}</p>
-        <Link href="/" className="mt-4 text-center text-white/60">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-8">
+        <p className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">{fatalError}</p>
+        <Link href="/" className="mt-4 text-center text-[var(--muted)]">
           ← חזרה לבית
         </Link>
       </main>
@@ -211,25 +306,44 @@ export default function LivePage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-3 pt-3 pb-4">
-      <header className="mb-2 flex items-center justify-between text-sm">
-        <Link href="/" className="text-white/60">
-          ← בית
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-3 pt-4 pb-6">
+      <header className="mb-3 flex items-center justify-between">
+        <Link
+          href="/"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--panel)] text-[var(--muted)] active:scale-95"
+        >
+          ›
         </Link>
-        <span className="font-semibold">מול {match?.opponent}</span>
-        <Link href={`/report/${matchId}`} className="font-semibold text-green-400">
-          דוח ←
+        <div className="text-center">
+          <p className="text-sm font-extrabold">מול {match?.opponent}</p>
+          <p className="text-[11px] text-[var(--muted)]">משחק חי</p>
+        </div>
+        <Link
+          href={`/report/${matchId}`}
+          className="flex h-9 items-center rounded-full border border-[var(--border)] bg-[var(--panel)] px-3 text-xs font-bold text-[var(--accent)] active:scale-95"
+        >
+          דוח
         </Link>
       </header>
 
-      <div className="mb-2 flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs">
-        <span className={online ? "text-green-400" : "text-amber-400"}>
-          {online ? "● מחובר" : "● אופליין"}
+      {notice && (
+        <div className="mb-3 flex items-center justify-between gap-2 rounded-2xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+          <span>{notice}</span>
+          <button onClick={() => setNotice(null)} className="btn btn-ghost h-7 shrink-0 px-3 text-xs">
+            סגור
+          </button>
+        </div>
+      )}
+
+      <div className="mb-3 flex items-center justify-between rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2 text-xs">
+        <span className={`flex items-center gap-1.5 font-bold ${online ? "text-[var(--accent)]" : "text-amber-400"}`}>
+          <span className={`h-2 w-2 rounded-full ${online ? "bg-[var(--accent)]" : "bg-amber-400"}`} />
+          {online ? "מחובר" : "אופליין"}
         </span>
-        <span className="text-white/60">
-          ממתינים לסנכרון: <b className="text-white">{pending}</b>
+        <span className="text-[var(--muted)]">
+          ממתינים: <b className="tabular text-[var(--text)]">{pending}</b>
         </span>
-        <button onClick={trySync} className="rounded-lg bg-white/10 px-2 py-1 font-semibold active:scale-95">
+        <button onClick={trySync} className="btn btn-ghost h-7 px-3 text-xs">
           סנכרן
         </button>
       </div>
@@ -242,87 +356,86 @@ export default function LivePage() {
       />
 
       <div className="mt-3 grid grid-cols-2 gap-2.5">
-        {ACTION_ORDER.map((action) => (
+        {PRIMARY_ACTIONS.map((action) => (
           <button
             key={action}
             onClick={() => onActionClick(action)}
-            className={`rounded-2xl py-7 text-xl font-bold active:scale-[0.97] ${ACTION_STYLES[action]} ${
-              action === "corner" ? "col-span-2 py-4 text-lg" : ""
-            }`}
+            className={`btn rounded-2xl py-8 text-xl ${ACTION_BTN[action]}`}
           >
             {ACTION_LABELS[action]}
           </button>
         ))}
       </div>
 
-      <div className="mt-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-white/70">אירועים אחרונים</h2>
-        <button
-          onClick={undoLast}
-          disabled={events.length === 0}
-          className="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold active:scale-95 disabled:opacity-40"
-        >
+      <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+        {CORNER_ACTIONS.map((action) => (
+          <button
+            key={action}
+            onClick={() => onActionClick(action)}
+            className={`btn rounded-2xl py-4 text-base ${ACTION_BTN[action]}`}
+          >
+            {ACTION_LABELS[action]}
+          </button>
+        ))}
+      </div>
+
+      <button onClick={() => setRosterOpen(true)} className="btn btn-ghost mt-3 w-full py-2.5 text-sm">
+        נהל הרכב · {players.length} שחקנים
+      </button>
+
+      <div className="mt-4 flex items-center justify-between">
+        <h2 className="label">אירועים אחרונים</h2>
+        <button onClick={undoLast} disabled={events.length === 0} className="btn btn-ghost h-8 px-3 text-xs">
           ↶ בטל אחרון
         </button>
       </div>
 
       <ul className="mt-2 flex flex-col gap-1.5">
         {recent.length === 0 && (
-          <li className="rounded-xl border border-white/10 bg-white/5 p-3 text-center text-sm text-white/40">
-            עדיין לא נרשמו אירועים
-          </li>
+          <li className="card p-3 text-center text-sm text-[var(--muted-2)]">עדיין לא נרשמו אירועים</li>
         )}
         {recent.map((ev) => (
-          <li
-            key={ev.id}
-            className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm"
-          >
+          <li key={ev.id} className="card flex items-center justify-between px-3 py-2 text-sm">
             <span className="flex items-center gap-2">
-              <span className="tabular-nums text-white/50">{ev.match_minute}׳</span>
-              <span className="font-semibold">{ACTION_LABELS[ev.action_type]}</span>
-              <span className="text-white/60">{playerLabel(ev.player_id)}</span>
-              {ev.zone && <span className="text-white/40">· {ZONE_LABELS[ev.zone]}</span>}
-              {ev.shot_location && <span className="text-white/40">· {SHOT_LABELS[ev.shot_location]}</span>}
-              {!ev.synced && <span className="text-amber-400" title="ממתין לסנכרון">◌</span>}
+              <span className="tabular text-[var(--muted-2)]">{ev.match_minute}׳</span>
+              <span className="font-bold">{ACTION_LABELS[ev.action_type]}</span>
+              <span className="text-[var(--muted)]">{playerLabel(ev.player_id)}</span>
+              {ev.zone && <span className="text-[var(--muted-2)]">· {ZONE_LABELS[ev.zone]}</span>}
+              {ev.shot_location && <span className="text-[var(--muted-2)]">· {SHOT_LABELS[ev.shot_location]}</span>}
+              {!ev.synced && (
+                <span className="text-amber-400" title="ממתין לסנכרון">
+                  ◌
+                </span>
+              )}
             </span>
-            <button
-              onClick={() => deleteEvent(ev.id)}
-              className="text-red-400/80 active:scale-95"
-              aria-label="מחק"
-            >
+            <button onClick={() => deleteEvent(ev.id)} className="text-red-400/80 active:scale-95" aria-label="מחק">
               ✕
             </button>
           </li>
         ))}
       </ul>
 
+      <div className="mt-5">
+        <button onClick={() => setConfirmEnd(true)} className="btn btn-danger w-full py-3.5">
+          סיום משחק
+        </button>
+      </div>
+
       {/* פופ-אפ בחירה מהירה */}
       {modalPhase && (
-        <div
-          className="fixed inset-0 z-50 flex items-end bg-black/60"
-          onClick={() => {
-            setModalAction(null);
-            setModalPlayerId(undefined);
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm" onClick={closeModal}>
           <div
-            className="max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border-t border-white/10 bg-[#0f1830] p-4 pb-8"
+            className="sheet max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[#0c1322] p-4 pb-8"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <span className="text-lg font-bold">
+              <span className="text-lg font-extrabold">
                 {modalAction && ACTION_LABELS[modalAction]}
                 {modalPhase === "zone" && " · באיזה אזור?"}
                 {modalPhase === "box" && " · מאיפה הבעיטה?"}
                 {modalPhase === "player" && " · איזה שחקן?"}
               </span>
-              <button
-                onClick={() => {
-                  setModalAction(null);
-                  setModalPlayerId(undefined);
-                }}
-                className="rounded-lg bg-white/10 px-3 py-1.5 text-sm"
-              >
+              <button onClick={closeModal} className="btn btn-ghost h-8 px-3 text-sm">
                 בטל
               </button>
             </div>
@@ -333,15 +446,17 @@ export default function LivePage() {
                   <button
                     key={p.id}
                     onClick={() => onPlayerPick(p.id)}
-                    className="flex flex-col items-center rounded-2xl border border-white/10 bg-white/5 py-3 active:scale-95"
+                    className="btn card flex-col py-3 active:scale-95"
                   >
-                    <span className="text-2xl font-bold">{p.shirt_number}</span>
-                    <span className="mt-0.5 max-w-full truncate text-[11px] text-white/60">{p.name}</span>
+                    <span className="text-2xl font-black">{p.shirt_number}</span>
+                    <span className="mt-0.5 max-w-full truncate text-[11px] font-medium text-[var(--muted)]">
+                      {p.name}
+                    </span>
                   </button>
                 ))}
                 <button
                   onClick={() => onPlayerPick(null)}
-                  className="col-span-4 rounded-2xl border border-white/10 bg-white/5 py-3 text-sm text-white/60 active:scale-95"
+                  className="btn card col-span-4 py-3 text-sm text-[var(--muted)]"
                 >
                   ללא שחקן
                 </button>
@@ -354,8 +469,12 @@ export default function LivePage() {
                   <button
                     key={z}
                     onClick={() => modalAction && commit(modalAction, modalPlayerId ?? null, z, null)}
-                    className={`rounded-2xl py-8 text-lg font-bold active:scale-95 ${
-                      z === "def" ? "bg-red-500/80 text-white" : z === "mid" ? "bg-white/15" : "bg-green-500/80 text-black"
+                    className={`btn rounded-2xl py-9 text-lg ${
+                      z === "def"
+                        ? "bg-red-500/80 text-white"
+                        : z === "mid"
+                          ? "btn-ghost"
+                          : "bg-emerald-500/80 text-[#04150e]"
                     }`}
                   >
                     {ZONE_LABELS[z]}
@@ -370,8 +489,8 @@ export default function LivePage() {
                   <button
                     key={loc}
                     onClick={() => modalAction && commit(modalAction, modalPlayerId ?? null, null, loc)}
-                    className={`rounded-2xl py-8 text-lg font-bold active:scale-95 ${
-                      loc === "in_box" ? "bg-green-500/80 text-black" : "bg-white/15"
+                    className={`btn rounded-2xl py-9 text-lg ${
+                      loc === "in_box" ? "bg-emerald-500/80 text-[#04150e]" : "btn-ghost"
                     }`}
                   >
                     {SHOT_LABELS[loc]}
@@ -379,6 +498,126 @@ export default function LivePage() {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* אישור סיום משחק */}
+      {confirmEnd && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm" onClick={() => setConfirmEnd(false)}>
+          <div className="sheet card w-full max-w-xs p-5 text-center" onClick={(e) => e.stopPropagation()}>
+            <p className="text-lg font-extrabold">לסיים את המשחק?</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              נסנכרן את כל האירועים ונעבור לדוח. אחרי הסיום אי אפשר לערוך או להוסיף אירועים.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setConfirmEnd(false)} className="btn btn-ghost flex-1 py-3">
+                חזרה
+              </button>
+              <button onClick={endMatch} className="btn btn-primary flex-1 py-3">
+                סיום ←
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* גיליון ניהול הרכב */}
+      {rosterOpen && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm" onClick={() => setRosterOpen(false)}>
+          <div
+            className="sheet max-h-[88vh] w-full overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[#0c1322] p-4 pb-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-lg font-extrabold">הרכב המשחק</span>
+              <button onClick={() => setRosterOpen(false)} className="btn btn-ghost h-8 px-3 text-sm">
+                סגור
+              </button>
+            </div>
+
+            {/* שחקנים במשחק */}
+            <div className="mb-4 flex flex-wrap gap-2">
+              {players.map((p) => (
+                <span key={p.id} className="chip text-[var(--text)]">
+                  <b className="tabular">#{p.shirt_number}</b> {p.name}
+                </span>
+              ))}
+            </div>
+
+            {/* הוספה מהסגל */}
+            {availableSquad.length > 0 && (
+              <div className="mb-4">
+                <p className="label mb-2">הוסף מהסגל</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {availableSquad.map((s) => (
+                    <button
+                      key={s.id}
+                      disabled={rosterBusy}
+                      onClick={() => addFromSquad(s)}
+                      className="btn card flex-col py-2.5 active:scale-95"
+                    >
+                      <span className="text-xl font-black">{s.shirt_number}</span>
+                      <span className="max-w-full truncate text-[11px] text-[var(--muted)]">{s.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* הוספת שחקן חדש */}
+            <div>
+              <p className="label mb-2">הוסף שחקן חדש</p>
+              <div className="flex items-stretch gap-2">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  autoComplete="off"
+                  value={newNum}
+                  onChange={(e) => setNewNum(e.target.value.replace(/[^\d]/g, "").slice(0, 2))}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addNewPlayer();
+                    }
+                  }}
+                  placeholder="מס׳"
+                  aria-label="מספר חולצה"
+                  className="field w-16 shrink-0 text-center tabular"
+                />
+                <input
+                  type="text"
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addNewPlayer();
+                    }
+                  }}
+                  placeholder="שם השחקן"
+                  aria-label="שם השחקן"
+                  className="field min-w-0 flex-1"
+                />
+              </div>
+              <label className="mt-2 flex items-center gap-2 text-sm text-[var(--muted)]">
+                <input
+                  type="checkbox"
+                  checked={alsoSquad}
+                  onChange={(e) => setAlsoSquad(e.target.checked)}
+                  className="h-4 w-4 accent-[var(--accent)]"
+                />
+                שמור גם בסגל הקבוע
+              </label>
+              <button
+                onClick={addNewPlayer}
+                disabled={rosterBusy}
+                className="btn btn-primary mt-3 w-full py-3"
+              >
+                {rosterBusy ? "מוסיף..." : "+ הוסף להרכב"}
+              </button>
+            </div>
           </div>
         </div>
       )}
