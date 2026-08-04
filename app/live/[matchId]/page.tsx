@@ -42,6 +42,7 @@ import {
 import { MatchClock } from "./MatchClock";
 
 const PRIMARY_ACTIONS: ActionType[] = ["ball_loss", "tackle", "key_pass", "shot"];
+const SCORE_ACTIONS: ActionType[] = ["goal", "assist"];
 const CORNER_ACTIONS: ActionType[] = ["corner_for", "corner_against"];
 
 const ACTION_BTN: Record<ActionType, string> = {
@@ -49,6 +50,8 @@ const ACTION_BTN: Record<ActionType, string> = {
   tackle: "bg-gradient-to-b from-emerald-400 to-emerald-500 text-[#04150e] shadow-[0_10px_30px_-12px_rgba(16,185,129,0.8)]",
   key_pass: "bg-gradient-to-b from-blue-500 to-blue-600 text-white shadow-[0_10px_30px_-12px_rgba(59,130,246,0.8)]",
   shot: "bg-gradient-to-b from-amber-400 to-amber-500 text-[#241a00] shadow-[0_10px_30px_-12px_rgba(245,158,11,0.8)]",
+  goal: "bg-gradient-to-b from-violet-500 to-violet-600 text-white shadow-[0_10px_30px_-12px_rgba(139,92,246,0.85)]",
+  assist: "bg-gradient-to-b from-cyan-400 to-cyan-500 text-[#042f2e] shadow-[0_10px_30px_-12px_rgba(34,211,238,0.8)]",
   corner_for: "border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]",
   corner_against: "border border-red-400/40 bg-red-500/10 text-red-300",
 };
@@ -361,6 +364,18 @@ export default function LivePage() {
             key={action}
             onClick={() => onActionClick(action)}
             className={`btn rounded-2xl py-8 text-xl ${ACTION_BTN[action]}`}
+          >
+            {ACTION_LABELS[action]}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+        {SCORE_ACTIONS.map((action) => (
+          <button
+            key={action}
+            onClick={() => onActionClick(action)}
+            className={`btn rounded-2xl py-6 text-xl ${ACTION_BTN[action]}`}
           >
             {ACTION_LABELS[action]}
           </button>

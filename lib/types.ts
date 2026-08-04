@@ -3,6 +3,8 @@ export type ActionType =
   | "tackle"
   | "ball_loss"
   | "shot"
+  | "goal"
+  | "assist"
   | "corner_for"
   | "corner_against";
 
@@ -79,6 +81,8 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   tackle: "חילוץ",
   key_pass: "מסירת מפתח",
   shot: "איום לשער",
+  goal: "שער",
+  assist: "בישול",
   corner_for: "קרן לזכותנו",
   corner_against: "קרן לחובתנו",
 };

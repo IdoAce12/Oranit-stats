@@ -20,6 +20,8 @@ export const IMPACT_WEIGHTS = {
     mid: 0,
     att: 0,
   } as Record<Zone, number>,
+  goal: 3, // שער
+  assist: 2, // בישול
   // קרנות הן אירוע קבוצתי ללא שחקן - לא משפיעות על ציון שחקן
   corner_for: 0,
   corner_against: 0,
@@ -37,6 +39,10 @@ export function scoreForEvent(event: MatchEvent): number {
         : IMPACT_WEIGHTS.shot.out_box;
     case "ball_loss":
       return event.zone ? IMPACT_WEIGHTS.ball_loss[event.zone] : 0;
+    case "goal":
+      return IMPACT_WEIGHTS.goal;
+    case "assist":
+      return IMPACT_WEIGHTS.assist;
     case "corner_for":
     case "corner_against":
       return 0;
@@ -52,6 +58,8 @@ export interface PlayerImpact {
   score: number;
   counts: Record<ActionType, number>;
   keyPasses: number;
+  goals: number;
+  assists: number;
   tacklesByZone: Record<Zone, number>;
   lossesByZone: Record<Zone, number>;
   shotsInBox: number;
@@ -59,7 +67,16 @@ export interface PlayerImpact {
 }
 
 function emptyCounts(): Record<ActionType, number> {
-  return { key_pass: 0, tackle: 0, ball_loss: 0, shot: 0, corner_for: 0, corner_against: 0 };
+  return {
+    key_pass: 0,
+    tackle: 0,
+    ball_loss: 0,
+    shot: 0,
+    goal: 0,
+    assist: 0,
+    corner_for: 0,
+    corner_against: 0,
+  };
 }
 
 function emptyZones(): Record<Zone, number> {
@@ -84,6 +101,8 @@ export function computeImpact(events: MatchEvent[], players: Player[]): PlayerIm
         score: 0,
         counts: emptyCounts(),
         keyPasses: 0,
+        goals: 0,
+        assists: 0,
         tacklesByZone: emptyZones(),
         lossesByZone: emptyZones(),
         shotsInBox: 0,
@@ -100,6 +119,8 @@ export function computeImpact(events: MatchEvent[], players: Player[]): PlayerIm
     entry.counts[ev.action_type] += 1;
 
     if (ev.action_type === "key_pass") entry.keyPasses += 1;
+    if (ev.action_type === "goal") entry.goals += 1;
+    if (ev.action_type === "assist") entry.assists += 1;
     if (ev.action_type === "tackle" && ev.zone) entry.tacklesByZone[ev.zone] += 1;
     if (ev.action_type === "ball_loss" && ev.zone) entry.lossesByZone[ev.zone] += 1;
     if (ev.action_type === "shot") {
@@ -121,6 +142,8 @@ export interface SeasonImpact {
   score: number;
   matchesPlayed: number;
   keyPasses: number;
+  goals: number;
+  assists: number;
   tackles: number;
   defLosses: number;
   shotsInBox: number;
@@ -162,6 +185,8 @@ export function computeSeasonImpact(
         score: 0,
         matchesPlayed: 0,
         keyPasses: 0,
+        goals: 0,
+        assists: 0,
         tackles: 0,
         defLosses: 0,
         shotsInBox: 0,
@@ -180,6 +205,8 @@ export function computeSeasonImpact(
     if (!entry) continue;
     entry.score += scoreForEvent(ev);
     if (ev.action_type === "key_pass") entry.keyPasses += 1;
+    if (ev.action_type === "goal") entry.goals += 1;
+    if (ev.action_type === "assist") entry.assists += 1;
     if (ev.action_type === "tackle") entry.tackles += 1;
     if (ev.action_type === "ball_loss" && ev.zone === "def") entry.defLosses += 1;
     if (ev.action_type === "shot" && ev.shot_location === "in_box") entry.shotsInBox += 1;

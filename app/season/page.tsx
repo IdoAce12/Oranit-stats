@@ -61,7 +61,9 @@ export default function SeasonPage() {
     const base = computeSeasonImpact(events, players, squad);
     // מציגים רק שחקנים עם לפחות אירוע אחד או ציון ≠ 0
     const withActivity = base.filter(
-      (r) => r.score !== 0 || r.keyPasses + r.tackles + r.defLosses + r.shotsInBox > 0
+      (r) =>
+        r.score !== 0 ||
+        r.goals + r.assists + r.keyPasses + r.tackles + r.defLosses + r.shotsInBox > 0
     );
     const list = withActivity.length > 0 ? withActivity : base;
     if (sortKey === "perMatch") {
@@ -154,8 +156,8 @@ export default function SeasonPage() {
                     />
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
-                    {row.matchesPlayed} משחקים · {row.keyPasses} מס״מ · {row.tackles} חילוצים ·{" "}
-                    {row.defLosses} איבודי הגנה
+                    {row.matchesPlayed} משחקים · {row.goals} שערים · {row.assists} בישולים ·{" "}
+                    {row.keyPasses} מס״מ · {row.tackles} חילוצים · {row.defLosses} איבודי הגנה
                   </p>
                 </div>
                 <div className="text-left">

@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getEvents, getMatch, getPlayers, reopenMatch } from "@/lib/db";
-import { downloadCsv, eventsToCsv } from "@/lib/exportCsv";
-import { computeImpact } from "@/lib/impactScore";
+import { downloadCsv, matchReportToCsv } from "@/lib/exportCsv";
+import { computePlayerMatchStats, computeTeamTotals } from "@/lib/playerStats";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { MatchEvent, Match, Player, Zone, ZONE_LABELS } from "@/lib/types";
+import { MatchEvent, Match, Player, ZONE_LABELS } from "@/lib/types";
 import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 
@@ -48,30 +48,11 @@ export default function ReportPage() {
     })();
   }, [matchId]);
 
-  const impact = useMemo(() => computeImpact(events, players), [events, players]);
-  const maxAbs = useMemo(
-    () => Math.max(1, ...impact.map((r) => Math.abs(r.score))),
-    [impact]
+  const playerStats = useMemo(
+    () => computePlayerMatchStats(events, players),
+    [events, players]
   );
-
-  const stats = useMemo(() => {
-    const losses: Record<Zone, number> = { def: 0, mid: 0, att: 0 };
-    const tackles: Record<Zone, number> = { def: 0, mid: 0, att: 0 };
-    let inBox = 0;
-    let outBox = 0;
-    let keyPasses = 0;
-    let cornersFor = 0;
-    let cornersAgainst = 0;
-    for (const e of events) {
-      if (e.action_type === "ball_loss" && e.zone) losses[e.zone] += 1;
-      if (e.action_type === "tackle" && e.zone) tackles[e.zone] += 1;
-      if (e.action_type === "shot") e.shot_location === "in_box" ? inBox++ : outBox++;
-      if (e.action_type === "key_pass") keyPasses++;
-      if (e.action_type === "corner_for") cornersFor++;
-      if (e.action_type === "corner_against") cornersAgainst++;
-    }
-    return { losses, tackles, inBox, outBox, keyPasses, cornersFor, cornersAgainst };
-  }, [events]);
+  const team = useMemo(() => computeTeamTotals(events), [events]);
 
   const defensiveLosses = useMemo(
     () =>
@@ -88,7 +69,10 @@ export default function ReportPage() {
   };
 
   const handleExport = () => {
-    const csv = eventsToCsv(events, players);
+    const csv = matchReportToCsv(events, players, {
+      opponent: match?.opponent,
+      matchDate: match?.match_date,
+    });
     downloadCsv(`scout_${match?.opponent ?? ""}_${match?.match_date ?? "match"}.csv`, csv);
   };
 
@@ -117,9 +101,10 @@ export default function ReportPage() {
   }
 
   const isLive = match?.status === "live";
+  const hasData = players.length > 0 || events.length > 0;
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 pt-6 pb-10">
       <AppHeader
         title={`דוח מול ${match?.opponent ?? ""}`}
         subtitle={match ? new Date(match.match_date).toLocaleDateString("he-IL") : undefined}
@@ -141,75 +126,142 @@ export default function ReportPage() {
           <button
             onClick={handleReopen}
             disabled={reopening}
-            className="btn btn-ghost mt-2 w-full py-2.5 text-sm"
+            className="btn btn-ghost mt-2 w-full py-2.5 text-sm sm:w-auto"
           >
             {reopening ? "פותח..." : "טעות? פתח מחדש ללייב"}
           </button>
         </div>
       )}
 
-      {events.length === 0 && (
-        <div className="card p-6 text-center text-[var(--muted)]">עדיין אין אירועים למשחק הזה.</div>
+      {!hasData && (
+        <div className="card p-6 text-center text-[var(--muted)]">עדיין אין נתונים למשחק הזה.</div>
       )}
 
-      {events.length > 0 && (
+      {hasData && (
         <>
-          {/* מדד השפעה */}
+          {/* סיכום קבוצתי קצר */}
+          <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+            <StatCard value={team.goals} label="שערים" tone="accent" />
+            <StatCard value={team.assists} label="בישולים" tone="info" />
+            <StatCard value={team.keyPasses} label="מסירות מפתח" tone="info" />
+            <StatCard
+              value={`${team.shotsInBox}/${team.shotsOutBox}`}
+              label="איומים רחבה/חוץ"
+            />
+            <StatCard value={`${team.cornersFor}:${team.cornersAgainst}`} label="קרנות (לנו:להם)" />
+            <StatCard value={team.eventsTotal} label="סה״כ אירועים" />
+          </section>
+
+          {/* טבלת נתונים מקיפה — העיקר */}
           <section className="mb-5">
-            <h2 className="label mb-2">מדד השפעה — Impact Score</h2>
-            <div className="card divide-y divide-[var(--border)] overflow-hidden">
-              {impact.map((row, i) => (
-                <div key={row.playerId ?? "none"} className="flex items-center gap-3 p-3">
-                  <span
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
-                      i === 0
-                        ? "bg-amber-400 text-[#241a00]"
-                        : i === 1
-                          ? "bg-slate-300 text-slate-900"
-                          : i === 2
-                            ? "bg-orange-700 text-orange-100"
-                            : "bg-[var(--panel-strong)] text-[var(--muted)]"
-                    }`}
-                  >
-                    {i + 1}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-bold">{row.label}</p>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-[var(--panel-strong)]">
-                      <div
-                        className={`h-full rounded-full ${row.score >= 0 ? "bg-[var(--accent)]" : "bg-[var(--danger)]"}`}
-                        style={{ width: `${(Math.abs(row.score) / maxAbs) * 100}%` }}
-                      />
-                    </div>
-                    <p className="mt-1 text-[11px] text-[var(--muted-2)]">
-                      {row.keyPasses} מס״מ · {row.counts.tackle} חילוצים · {row.lossesByZone.def} איבודי הגנה · {row.shotsInBox} ברחבה
-                    </p>
-                  </div>
-                  <span
-                    className={`tabular text-2xl font-black ${
-                      row.score > 0 ? "text-[var(--accent)]" : row.score < 0 ? "text-[var(--danger)]" : "text-[var(--muted)]"
-                    }`}
-                  >
-                    {row.score > 0 ? "+" : ""}
-                    {row.score.toFixed(1)}
-                  </span>
-                </div>
-              ))}
+            <div className="mb-2 flex items-end justify-between gap-2">
+              <div>
+                <h2 className="label">טבלת נתונים מקיפה</h2>
+                <p className="text-[11px] text-[var(--muted-2)]">
+                  כל הפעולות לפי שחקן ואזור · גלול הצידה במובייל
+                </p>
+              </div>
+              <button onClick={handleExport} className="btn btn-primary h-9 shrink-0 px-4 text-sm">
+                ⬇ ייצוא לאקסל
+              </button>
+            </div>
+
+            <div className="card overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[980px] border-collapse text-center text-xs">
+                  <thead>
+                    <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[10px] text-[var(--muted)]">
+                      <th className="sticky right-0 bg-[var(--panel-strong)] px-2 py-2 text-right font-bold" rowSpan={2}>
+                        שחקן
+                      </th>
+                      <th className="px-1 py-1 font-bold text-violet-300" rowSpan={2}>
+                        שערים
+                      </th>
+                      <th className="px-1 py-1 font-bold text-cyan-300" rowSpan={2}>
+                        בישולים
+                      </th>
+                      <th className="px-1 py-1 font-bold text-[var(--danger)]" colSpan={4}>
+                        איבודי כדור
+                      </th>
+                      <th className="px-1 py-1 font-bold text-[var(--accent)]" colSpan={4}>
+                        חילוצים
+                      </th>
+                      <th className="px-1 py-1 font-bold text-[var(--info)]" colSpan={4}>
+                        מסירות מפתח
+                      </th>
+                      <th className="px-1 py-1 font-bold text-amber-300" colSpan={3}>
+                        איומים
+                      </th>
+                      <th className="px-2 py-1 font-bold" rowSpan={2}>
+                        סה״כ
+                      </th>
+                    </tr>
+                    <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[10px] text-[var(--muted-2)]">
+                      {(["הג׳", "אמ׳", "הת׳", "Σ"] as const).map((h) => (
+                        <th key={`l-${h}`} className="px-1 py-1.5 font-semibold">
+                          {h}
+                        </th>
+                      ))}
+                      {(["הג׳", "אמ׳", "הת׳", "Σ"] as const).map((h) => (
+                        <th key={`t-${h}`} className="px-1 py-1.5 font-semibold">
+                          {h}
+                        </th>
+                      ))}
+                      {(["הג׳", "אמ׳", "הת׳", "Σ"] as const).map((h) => (
+                        <th key={`k-${h}`} className="px-1 py-1.5 font-semibold">
+                          {h}
+                        </th>
+                      ))}
+                      <th className="px-1 py-1.5 font-semibold">רחבה</th>
+                      <th className="px-1 py-1.5 font-semibold">חוץ</th>
+                      <th className="px-1 py-1.5 font-semibold">Σ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {playerStats.map((row) => (
+                      <tr
+                        key={row.playerId ?? "none"}
+                        className="border-b border-[var(--border)]/60 odd:bg-white/[0.02]"
+                      >
+                        <td className="sticky right-0 bg-[var(--bg)] px-2 py-2 text-right font-bold whitespace-nowrap">
+                          <span className="tabular text-[var(--muted)]">
+                            {row.shirtNumber != null ? `#${row.shirtNumber}` : "—"}
+                          </span>{" "}
+                          {row.name}
+                        </td>
+                        <Num cell={row.goals} bold accent />
+                        <Num cell={row.assists} bold info />
+                        <Num cell={row.losses.def} danger />
+                        <Num cell={row.losses.mid} />
+                        <Num cell={row.losses.att} />
+                        <Num cell={row.lossesTotal} bold />
+                        <Num cell={row.tackles.def} />
+                        <Num cell={row.tackles.mid} />
+                        <Num cell={row.tackles.att} accent />
+                        <Num cell={row.tacklesTotal} bold />
+                        <Num cell={row.keyPasses.def} />
+                        <Num cell={row.keyPasses.mid} />
+                        <Num cell={row.keyPasses.att} />
+                        <Num cell={row.keyPassesTotal} bold info />
+                        <Num cell={row.shotsInBox} accent />
+                        <Num cell={row.shotsOutBox} />
+                        <Num cell={row.shotsTotal} bold />
+                        <Num cell={row.actionsTotal} bold />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="border-t border-[var(--border)] px-3 py-2 text-[10px] text-[var(--muted-2)]">
+                הג׳ = {ZONE_LABELS.def} · אמ׳ = {ZONE_LABELS.mid} · הת׳ = {ZONE_LABELS.att} · Σ = סה״כ
+              </p>
             </div>
           </section>
 
-          {/* פירוק אזורים */}
-          <section className="mb-5 grid grid-cols-2 gap-3">
-            <ZoneCard title="איבודי כדור" data={stats.losses} highlight="def" tone="danger" />
-            <ZoneCard title="חילוצים" data={stats.tackles} highlight="att" tone="accent" />
-          </section>
-
-          {/* איכות מצבים + קרנות */}
-          <section className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard value={stats.inBox} label="איום מהרחבה" tone="accent" />
-            <StatCard value={stats.outBox} label="איום מבחוץ" />
-            <StatCard value={stats.keyPasses} label="מסירות מפתח" tone="info" />
-            <StatCard value={`${stats.cornersFor}:${stats.cornersAgainst}`} label="קרנות (לנו:להם)" />
+          {/* פירוק אזורים קבוצתי */}
+          <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <ZoneCard title="איבודי כדור (קבוצה)" data={team.losses} highlight="def" tone="danger" />
+            <ZoneCard title="חילוצים (קבוצה)" data={team.tackles} highlight="att" tone="accent" />
           </section>
 
           {/* חיתוך וידאו */}
@@ -219,7 +271,7 @@ export default function ReportPage() {
             </h2>
             {defensiveLosses.length === 0 ? (
               <div className="card p-4 text-center text-sm text-[var(--muted)]">
-                אין איבודים בשליש ההגנתי. מצוין.
+                אין איבודים בשליש ההגנתי.
               </div>
             ) : (
               <ul className="flex flex-col gap-1.5">
@@ -238,12 +290,42 @@ export default function ReportPage() {
             )}
           </section>
 
-          <button onClick={handleExport} className="btn btn-ghost w-full py-3.5">
-            ⬇ ייצוא CSV
+          <button onClick={handleExport} className="btn btn-primary w-full py-3.5">
+            ⬇ ייצוא מלא לאקסל (טבלת שחקנים + לוג אירועים)
           </button>
         </>
       )}
     </main>
+  );
+}
+
+function Num({
+  cell,
+  bold,
+  danger,
+  accent,
+  info,
+}: {
+  cell: number;
+  bold?: boolean;
+  danger?: boolean;
+  accent?: boolean;
+  info?: boolean;
+}) {
+  const color =
+    cell === 0
+      ? "text-[var(--muted-2)]"
+      : danger
+        ? "text-[var(--danger)]"
+        : accent
+          ? "text-[var(--accent)]"
+          : info
+            ? "text-[var(--info)]"
+            : "";
+  return (
+    <td className={`tabular px-1 py-2 ${bold ? "font-black" : "font-semibold"} ${color}`}>
+      {cell}
+    </td>
   );
 }
 
@@ -254,19 +336,23 @@ function ZoneCard({
   tone,
 }: {
   title: string;
-  data: Record<Zone, number>;
-  highlight: Zone;
+  data: Record<"def" | "mid" | "att", number>;
+  highlight: "def" | "mid" | "att";
   tone: "danger" | "accent";
 }) {
   return (
     <div className="card p-3">
-      <h3 className="label mb-2">{title} לפי אזור</h3>
+      <h3 className="label mb-2">{title}</h3>
       <div className="grid grid-cols-3 gap-1 text-center">
-        {(["def", "mid", "att"] as Zone[]).map((z) => (
+        {(["def", "mid", "att"] as const).map((z) => (
           <div key={z} className="rounded-xl bg-[var(--panel-strong)] py-3">
             <div
               className={`tabular text-2xl font-black ${
-                z === highlight ? (tone === "danger" ? "text-[var(--danger)]" : "text-[var(--accent)]") : ""
+                z === highlight
+                  ? tone === "danger"
+                    ? "text-[var(--danger)]"
+                    : "text-[var(--accent)]"
+                  : ""
               }`}
             >
               {data[z]}
@@ -288,7 +374,8 @@ function StatCard({
   label: string;
   tone?: "accent" | "info";
 }) {
-  const color = tone === "accent" ? "text-[var(--accent)]" : tone === "info" ? "text-[var(--info)]" : "";
+  const color =
+    tone === "accent" ? "text-[var(--accent)]" : tone === "info" ? "text-[var(--info)]" : "";
   return (
     <div className="card p-3 text-center">
       <div className={`tabular text-2xl font-black ${color}`}>{value}</div>

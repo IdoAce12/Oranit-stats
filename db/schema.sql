@@ -42,7 +42,7 @@ create table if not exists public.events (
   id uuid primary key,
   match_id uuid not null references public.matches(id) on delete cascade,
   player_id uuid references public.players(id) on delete set null,
-  action_type text not null check (action_type in ('key_pass','tackle','ball_loss','shot','corner_for','corner_against')),
+  action_type text not null check (action_type in ('key_pass','tackle','ball_loss','shot','goal','assist','corner_for','corner_against')),
   zone text check (zone in ('def','mid','att')),
   shot_location text check (shot_location in ('in_box','out_box')),
   half int not null default 1 check (half in (1,2)),
