@@ -5,11 +5,12 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getEvents, getMatch, getPlayers, reopenMatch } from "@/lib/db";
 import { downloadCsv, matchReportToCsv } from "@/lib/exportCsv";
-import { computePlayerMatchStats, computeTeamTotals } from "@/lib/playerStats";
+import { computePlayerMatchStats, computeTeamTotals, PlayerMatchStats } from "@/lib/playerStats";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MatchEvent, Match, Player, ZONE_LABELS } from "@/lib/types";
 import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
+import { PlayerCardSheet } from "./PlayerCardSheet";
 
 export default function ReportPage() {
   const params = useParams<{ matchId: string }>();
@@ -22,6 +23,7 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reopening, setReopening] = useState(false);
+  const [cardPlayerId, setCardPlayerId] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     if (!matchId) return;
@@ -54,6 +56,14 @@ export default function ReportPage() {
   );
   const team = useMemo(() => computeTeamTotals(events), [events]);
 
+  const selectedStats = useMemo(() => {
+    if (cardPlayerId === undefined) return null;
+    if (cardPlayerId === null) {
+      return playerStats.find((p) => p.playerId === null) ?? null;
+    }
+    return playerStats.find((p) => p.playerId === cardPlayerId) ?? null;
+  }, [cardPlayerId, playerStats]);
+
   const defensiveLosses = useMemo(
     () =>
       events
@@ -67,6 +77,8 @@ export default function ReportPage() {
     const p = players.find((x) => x.id === id);
     return p ? `#${p.shirt_number} ${p.name}` : "?";
   };
+
+  const openPlayer = (playerId: string | null) => setCardPlayerId(playerId);
 
   const handleExport = () => {
     const csv = matchReportToCsv(events, players, {
@@ -104,7 +116,7 @@ export default function ReportPage() {
   const hasData = players.length > 0 || events.length > 0;
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
       <AppHeader
         title={`דוח מול ${match?.opponent ?? ""}`}
         subtitle={match ? new Date(match.match_date).toLocaleDateString("he-IL") : undefined}
@@ -139,132 +151,120 @@ export default function ReportPage() {
 
       {hasData && (
         <>
-          {/* סיכום קבוצתי קצר */}
           <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <StatCard value={team.goals} label="שערים" tone="accent" />
             <StatCard value={team.assists} label="בישולים" tone="info" />
             <StatCard value={team.keyPasses} label="מסירות מפתח" tone="info" />
-            <StatCard
-              value={`${team.shotsInBox}/${team.shotsOutBox}`}
-              label="איומים רחבה/חוץ"
-            />
+            <StatCard value={`${team.shotsInBox}/${team.shotsOutBox}`} label="איומים רחבה/חוץ" />
             <StatCard value={`${team.cornersFor}:${team.cornersAgainst}`} label="קרנות (לנו:להם)" />
             <StatCard value={team.eventsTotal} label="סה״כ אירועים" />
           </section>
 
-          {/* טבלת נתונים מקיפה — העיקר */}
+          {/* בחירת שחקן מהירה לכרטיס */}
           <section className="mb-5">
             <div className="mb-2 flex items-end justify-between gap-2">
               <div>
-                <h2 className="label">טבלת נתונים מקיפה</h2>
-                <p className="text-[11px] text-[var(--muted-2)]">
-                  כל הפעולות לפי שחקן ואזור · גלול הצידה במובייל
-                </p>
+                <h2 className="label">כרטיסי שחקנים</h2>
+                <p className="text-[11px] text-[var(--muted-2)]">לחיצה פותחת פירוט אישי מלא</p>
               </div>
               <button onClick={handleExport} className="btn btn-primary h-9 shrink-0 px-4 text-sm">
                 ⬇ ייצוא לאקסל
               </button>
             </div>
-
-            <div className="card overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[980px] border-collapse text-center text-xs">
-                  <thead>
-                    <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[10px] text-[var(--muted)]">
-                      <th className="sticky right-0 bg-[var(--panel-strong)] px-2 py-2 text-right font-bold" rowSpan={2}>
-                        שחקן
-                      </th>
-                      <th className="px-1 py-1 font-bold text-violet-300" rowSpan={2}>
-                        שערים
-                      </th>
-                      <th className="px-1 py-1 font-bold text-cyan-300" rowSpan={2}>
-                        בישולים
-                      </th>
-                      <th className="px-1 py-1 font-bold text-[var(--danger)]" colSpan={4}>
-                        איבודי כדור
-                      </th>
-                      <th className="px-1 py-1 font-bold text-[var(--accent)]" colSpan={4}>
-                        חילוצים
-                      </th>
-                      <th className="px-1 py-1 font-bold text-[var(--info)]" colSpan={4}>
-                        מסירות מפתח
-                      </th>
-                      <th className="px-1 py-1 font-bold text-amber-300" colSpan={3}>
-                        איומים
-                      </th>
-                      <th className="px-2 py-1 font-bold" rowSpan={2}>
-                        סה״כ
-                      </th>
-                    </tr>
-                    <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[10px] text-[var(--muted-2)]">
-                      {(["הג׳", "אמ׳", "הת׳", "Σ"] as const).map((h) => (
-                        <th key={`l-${h}`} className="px-1 py-1.5 font-semibold">
-                          {h}
-                        </th>
-                      ))}
-                      {(["הג׳", "אמ׳", "הת׳", "Σ"] as const).map((h) => (
-                        <th key={`t-${h}`} className="px-1 py-1.5 font-semibold">
-                          {h}
-                        </th>
-                      ))}
-                      {(["הג׳", "אמ׳", "הת׳", "Σ"] as const).map((h) => (
-                        <th key={`k-${h}`} className="px-1 py-1.5 font-semibold">
-                          {h}
-                        </th>
-                      ))}
-                      <th className="px-1 py-1.5 font-semibold">רחבה</th>
-                      <th className="px-1 py-1.5 font-semibold">חוץ</th>
-                      <th className="px-1 py-1.5 font-semibold">Σ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {playerStats.map((row) => (
-                      <tr
-                        key={row.playerId ?? "none"}
-                        className="border-b border-[var(--border)]/60 odd:bg-white/[0.02]"
-                      >
-                        <td className="sticky right-0 bg-[var(--bg)] px-2 py-2 text-right font-bold whitespace-nowrap">
-                          <span className="tabular text-[var(--muted)]">
-                            {row.shirtNumber != null ? `#${row.shirtNumber}` : "—"}
-                          </span>{" "}
-                          {row.name}
-                        </td>
-                        <Num cell={row.goals} bold accent />
-                        <Num cell={row.assists} bold info />
-                        <Num cell={row.losses.def} danger />
-                        <Num cell={row.losses.mid} />
-                        <Num cell={row.losses.att} />
-                        <Num cell={row.lossesTotal} bold />
-                        <Num cell={row.tackles.def} />
-                        <Num cell={row.tackles.mid} />
-                        <Num cell={row.tackles.att} accent />
-                        <Num cell={row.tacklesTotal} bold />
-                        <Num cell={row.keyPasses.def} />
-                        <Num cell={row.keyPasses.mid} />
-                        <Num cell={row.keyPasses.att} />
-                        <Num cell={row.keyPassesTotal} bold info />
-                        <Num cell={row.shotsInBox} accent />
-                        <Num cell={row.shotsOutBox} />
-                        <Num cell={row.shotsTotal} bold />
-                        <Num cell={row.actionsTotal} bold />
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <p className="border-t border-[var(--border)] px-3 py-2 text-[10px] text-[var(--muted-2)]">
-                הג׳ = {ZONE_LABELS.def} · אמ׳ = {ZONE_LABELS.mid} · הת׳ = {ZONE_LABELS.att} · Σ = סה״כ
-              </p>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {playerStats
+                .filter((p) => p.playerId !== null)
+                .map((p) => (
+                  <button
+                    key={p.playerId!}
+                    onClick={() => openPlayer(p.playerId)}
+                    className="card flex flex-col items-center py-3 active:scale-95"
+                  >
+                    <span className="text-xl font-black tabular">{p.shirtNumber}</span>
+                    <span className="mt-0.5 max-w-full truncate px-1 text-[11px] text-[var(--muted)]">
+                      {p.name}
+                    </span>
+                    {(p.goals > 0 || p.assists > 0) && (
+                      <span className="mt-1 text-[10px] font-bold text-[var(--accent)]">
+                        {p.goals > 0 ? `${p.goals}ש׳` : ""}
+                        {p.goals > 0 && p.assists > 0 ? " · " : ""}
+                        {p.assists > 0 ? `${p.assists}ב׳` : ""}
+                      </span>
+                    )}
+                  </button>
+                ))}
             </div>
           </section>
 
-          {/* פירוק אזורים קבוצתי */}
+          <MetricTable
+            title="שערים"
+            headers={["שערים"]}
+            rows={playerStats}
+            sortKey={(r) => r.goals}
+            cells={(r) => [r.goals]}
+            onPlayer={openPlayer}
+            accentCol={0}
+          />
+
+          <MetricTable
+            title="בישולים"
+            headers={["בישולים"]}
+            rows={playerStats}
+            sortKey={(r) => r.assists}
+            cells={(r) => [r.assists]}
+            onPlayer={openPlayer}
+            infoCol={0}
+          />
+
+          <MetricTable
+            title="איבודי כדור"
+            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.lossesTotal}
+            cells={(r) => [r.losses.def, r.losses.mid, r.losses.att, r.lossesTotal]}
+            onPlayer={openPlayer}
+            dangerCol={0}
+            boldLast
+          />
+
+          <MetricTable
+            title="חילוצים"
+            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.tacklesTotal}
+            cells={(r) => [r.tackles.def, r.tackles.mid, r.tackles.att, r.tacklesTotal]}
+            onPlayer={openPlayer}
+            accentCol={2}
+            boldLast
+          />
+
+          <MetricTable
+            title="מסירות מפתח"
+            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.keyPassesTotal}
+            cells={(r) => [r.keyPasses.def, r.keyPasses.mid, r.keyPasses.att, r.keyPassesTotal]}
+            onPlayer={openPlayer}
+            infoCol={3}
+            boldLast
+          />
+
+          <MetricTable
+            title="איומים לשער"
+            headers={["ברחבה", "מחוץ", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.shotsTotal}
+            cells={(r) => [r.shotsInBox, r.shotsOutBox, r.shotsTotal]}
+            onPlayer={openPlayer}
+            accentCol={0}
+            boldLast
+          />
+
           <section className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <ZoneCard title="איבודי כדור (קבוצה)" data={team.losses} highlight="def" tone="danger" />
             <ZoneCard title="חילוצים (קבוצה)" data={team.tackles} highlight="att" tone="accent" />
           </section>
 
-          {/* חיתוך וידאו */}
           <section className="mb-5">
             <h2 className="label mb-2">
               נקודות לחיתוך וידאו — איבודים בשליש הגנתי ({defensiveLosses.length})
@@ -283,7 +283,12 @@ export default function ReportPage() {
                     <span className="font-bold tabular">
                       מחצית {e.half} · דקה {e.match_minute}׳
                     </span>
-                    <span className="text-[var(--muted)]">{playerLabel(e.player_id)}</span>
+                    <button
+                      onClick={() => e.player_id && openPlayer(e.player_id)}
+                      className="font-bold text-[var(--text)] underline-offset-2 active:opacity-70"
+                    >
+                      {playerLabel(e.player_id)}
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -291,41 +296,113 @@ export default function ReportPage() {
           </section>
 
           <button onClick={handleExport} className="btn btn-primary w-full py-3.5">
-            ⬇ ייצוא מלא לאקסל (טבלת שחקנים + לוג אירועים)
+            ⬇ ייצוא לאקסל (טבלאות נפרדות + לוג)
           </button>
         </>
+      )}
+
+      {selectedStats && (
+        <PlayerCardSheet
+          stats={selectedStats}
+          events={events}
+          onClose={() => setCardPlayerId(undefined)}
+        />
       )}
     </main>
   );
 }
 
-function Num({
-  cell,
-  bold,
-  danger,
-  accent,
-  info,
+function MetricTable({
+  title,
+  headers,
+  rows,
+  sortKey,
+  cells,
+  onPlayer,
+  dangerCol,
+  accentCol,
+  infoCol,
+  boldLast,
 }: {
-  cell: number;
-  bold?: boolean;
-  danger?: boolean;
-  accent?: boolean;
-  info?: boolean;
+  title: string;
+  headers: string[];
+  rows: PlayerMatchStats[];
+  sortKey: (r: PlayerMatchStats) => number;
+  cells: (r: PlayerMatchStats) => number[];
+  onPlayer: (id: string | null) => void;
+  dangerCol?: number;
+  accentCol?: number;
+  infoCol?: number;
+  boldLast?: boolean;
 }) {
-  const color =
-    cell === 0
-      ? "text-[var(--muted-2)]"
-      : danger
-        ? "text-[var(--danger)]"
-        : accent
-          ? "text-[var(--accent)]"
-          : info
-            ? "text-[var(--info)]"
-            : "";
+  const sorted = [...rows]
+    .filter((r) => r.playerId !== null)
+    .sort((a, b) => sortKey(b) - sortKey(a) || (a.shirtNumber ?? 999) - (b.shirtNumber ?? 999));
+
   return (
-    <td className={`tabular px-1 py-2 ${bold ? "font-black" : "font-semibold"} ${color}`}>
-      {cell}
-    </td>
+    <section className="mb-4">
+      <h2 className="label mb-2">{title}</h2>
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-center text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[11px] text-[var(--muted)]">
+                <th className="px-3 py-2 text-right font-bold">שחקן</th>
+                {headers.map((h) => (
+                  <th key={h} className="px-2 py-2 font-bold">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row) => {
+                const vals = cells(row);
+                return (
+                  <tr
+                    key={row.playerId ?? row.name}
+                    className="border-b border-[var(--border)]/50 odd:bg-white/[0.02]"
+                  >
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        onClick={() => onPlayer(row.playerId)}
+                        className="font-bold active:opacity-70"
+                      >
+                        <span className="tabular text-[var(--muted)]">#{row.shirtNumber}</span>{" "}
+                        <span className="underline decoration-[var(--border-strong)] underline-offset-2">
+                          {row.name}
+                        </span>
+                      </button>
+                    </td>
+                    {vals.map((v, i) => {
+                      const isLast = boldLast && i === vals.length - 1;
+                      const color =
+                        v === 0
+                          ? "text-[var(--muted-2)]"
+                          : i === dangerCol
+                            ? "text-[var(--danger)]"
+                            : i === accentCol
+                              ? "text-[var(--accent)]"
+                              : i === infoCol
+                                ? "text-[var(--info)]"
+                                : "";
+                      return (
+                        <td
+                          key={i}
+                          className={`tabular px-2 py-2.5 ${isLast ? "font-black" : "font-semibold"} ${color}`}
+                        >
+                          {v}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
   );
 }
 
