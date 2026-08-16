@@ -37,7 +37,8 @@ create table if not exists public.players (
   name text not null,
   position text,
   is_starter boolean not null default true,
-  on_pitch boolean not null default false
+  on_pitch boolean not null default false,
+  lineup_slot int check (lineup_slot is null or (lineup_slot >= 0 and lineup_slot <= 9))
 );
 
 create index if not exists players_match_idx on public.players(match_id);

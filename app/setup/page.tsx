@@ -3,19 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { addPlayers, createMatch } from "@/lib/db";
-import { listSquad } from "@/lib/db";
+import { LineupPitch } from "../components/LineupPitch";
+import { AppHeader } from "../components/AppHeader";
+import { ConfigBanner } from "../components/ConfigBanner";
+import { addPlayers, createMatch, listSquad } from "@/lib/db";
+import { autoAssignSlots, LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { SquadPlayer } from "@/lib/types";
-import { AppHeader } from "../components/AppHeader";
-import { ConfigBanner } from "../components/ConfigBanner";
 
 type Step = 1 | 2;
 
 interface Selection {
   selected: boolean;
-  starter: boolean;
   number: string;
 }
 
@@ -30,6 +30,8 @@ export default function SetupPage() {
 
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [sel, setSel] = useState<Record<string, Selection>>({});
+  const [slots, setSlots] = useState<(string | null)[]>(() => Array(LINEUP_SIZE).fill(null));
+  const [pickId, setPickId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +48,6 @@ export default function SetupPage() {
         all.forEach((p) => {
           initial[p.id] = {
             selected: p.active !== false,
-            starter: false,
             number: String(p.shirt_number),
           };
         });
@@ -61,30 +62,32 @@ export default function SetupPage() {
     [squad, sel]
   );
   const selectedCount = selectedSquad.length;
-  const starterCount = selectedSquad.filter((p) => sel[p.id]?.starter).length;
+  const starterCount = slots.filter(Boolean).length;
+
+  const occupants = useMemo((): (PitchOccupant | null)[] => {
+    return slots.map((id) => {
+      if (!id) return null;
+      const p = squad.find((s) => s.id === id);
+      if (!p) return null;
+      return {
+        id: p.id,
+        shirt_number: parseInt(sel[p.id]?.number ?? "", 10) || p.shirt_number,
+        name: p.name,
+      };
+    });
+  }, [slots, squad, sel]);
+
+  const onPitchIds = useMemo(() => new Set(slots.filter(Boolean) as string[]), [slots]);
+  const benchSquad = useMemo(
+    () => selectedSquad.filter((p) => !onPitchIds.has(p.id)),
+    [selectedSquad, onPitchIds]
+  );
 
   const toggle = (id: string) =>
     setSel((prev) => ({
       ...prev,
-      [id]: { ...prev[id], selected: !prev[id].selected, starter: false },
+      [id]: { ...prev[id], selected: !prev[id].selected },
     }));
-
-  const toggleStarter = (id: string) => {
-    setSel((prev) => {
-      const cur = prev[id];
-      if (!cur?.selected) return prev;
-      if (cur.starter) {
-        return { ...prev, [id]: { ...cur, starter: false } };
-      }
-      const currentStarters = Object.values(prev).filter((s) => s.selected && s.starter).length;
-      if (currentStarters >= MAX_STARTERS) {
-        setError(`אפשר לבחור עד ${MAX_STARTERS} שחקני שדה בהרכב הפותח`);
-        return prev;
-      }
-      setError(null);
-      return { ...prev, [id]: { ...cur, starter: true } };
-    });
-  };
 
   const setNumber = (id: string, number: string) =>
     setSel((prev) => ({ ...prev, [id]: { ...prev[id], number } }));
@@ -92,28 +95,78 @@ export default function SetupPage() {
   const setAll = (value: boolean) =>
     setSel((prev) => {
       const next = { ...prev };
-      Object.keys(next).forEach(
-        (id) => (next[id] = { ...next[id], selected: value, starter: value ? next[id].starter : false })
-      );
+      Object.keys(next).forEach((id) => (next[id] = { ...next[id], selected: value }));
       return next;
     });
+
+  const pruneSlots = (selected: Record<string, Selection>) =>
+    setSlots((prev) => prev.map((id) => (id && selected[id]?.selected ? id : null)));
+
+  const placeOnPitch = (playerId: string, slot: number) => {
+    setSlots((prev) => {
+      const next = [...prev];
+      const from = next.findIndex((id) => id === playerId);
+      const occupant = next[slot];
+      if (from >= 0) next[from] = occupant ?? null;
+      else if (occupant) {
+        /* swap with whoever is there — incoming from bench */
+      }
+      next[slot] = playerId;
+      return next;
+    });
+    setPickId(null);
+    setError(null);
+  };
+
+  const removeFromPitch = (playerId: string) => {
+    setSlots((prev) => prev.map((id) => (id === playerId ? null : id)));
+    setPickId(null);
+  };
+
+  const autoFill = () => {
+    const assigned = autoAssignSlots(selectedSquad);
+    setSlots(assigned);
+    setPickId(null);
+    setError(null);
+  };
+
+  const onSlotClick = (slot: number, player: PitchOccupant | null) => {
+    if (pickId) {
+      placeOnPitch(pickId, slot);
+      return;
+    }
+    if (player) {
+      setPickId(player.id);
+      return;
+    }
+  };
 
   const goStep2 = () => {
     setError(null);
     if (!opponent.trim()) return setError("צריך להזין שם יריב");
     if (selectedCount === 0) return setError("בחר לפחות שחקן אחד לסגל המשחק");
+    const pruned = slots.map((id) => (id && sel[id]?.selected ? id : null));
+    const filled = pruned.filter(Boolean).length;
+    setSlots(filled > 0 ? pruned : autoAssignSlots(selectedSquad));
+    setPickId(null);
     setStep(2);
   };
 
   const handleSubmit = async () => {
     setError(null);
-    if (starterCount === 0) return setError("בחר לפחות שחקן אחד בהרכב הפותח");
+    if (starterCount === 0) return setError("מקם לפחות שחקן אחד על המגרש");
     if (starterCount > MAX_STARTERS) {
       return setError(`מקסימום ${MAX_STARTERS} שחקני שדה בהרכב הפותח`);
     }
 
+    const slotById = new Map<string, number>();
+    slots.forEach((id, i) => {
+      if (id) slotById.set(id, i);
+    });
+
     const chosen = selectedSquad.map((p) => {
-      const starter = sel[p.id].starter === true;
+      const slot = slotById.get(p.id);
+      const starter = slot !== undefined;
       return {
         squad_player_id: p.id,
         shirt_number: parseInt(sel[p.id].number, 10) || p.shirt_number,
@@ -121,6 +174,7 @@ export default function SetupPage() {
         position: p.position,
         is_starter: starter,
         on_pitch: starter,
+        lineup_slot: starter ? slot! : null,
       };
     });
 
@@ -134,7 +188,12 @@ export default function SetupPage() {
       await addPlayers(match.id, chosen);
       router.push(`/live/${match.id}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "שגיאה בשמירה");
+      const msg = e instanceof Error ? e.message : "שגיאה בשמירה";
+      if (/lineup_slot/i.test(msg)) {
+        setError("חסרה עמודת הרכב ב-Supabase — הרץ את db/migration_v6.sql");
+      } else {
+        setError(msg);
+      }
       setSaving(false);
     }
   };
@@ -142,11 +201,11 @@ export default function SetupPage() {
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-28">
       <AppHeader
-        title={step === 1 ? "משחק חדש — סגל" : "משחק חדש — הרכב פותח"}
+        title={step === 1 ? "משחק חדש — סגל" : "משחק חדש — הרכב"}
         subtitle={
           step === 1
             ? "שלב 1 מתוך 2 · בחירת סגל למשחק"
-            : `שלב 2 מתוך 2 · עד ${MAX_STARTERS} שחקני שדה`
+            : `שלב 2 מתוך 2 · פורמציה 4-3-3 · עד ${MAX_STARTERS} שחקני שדה`
         }
         backHref={step === 1 ? "/" : undefined}
       />
@@ -155,6 +214,8 @@ export default function SetupPage() {
         <button
           type="button"
           onClick={() => {
+            pruneSlots(sel);
+            setPickId(null);
             setStep(1);
             setError(null);
           }}
@@ -214,7 +275,7 @@ export default function SetupPage() {
             </div>
           </div>
           <p className="mb-2 text-[11px] text-[var(--muted-2)]">
-            בשלב הזה בוחרים מי בסגל המשחק בלבד — ההרכב הפותח בשלב הבא.
+            בשלב הזה בוחרים מי בסגל המשחק בלבד — ההרכב על המגרש בשלב הבא.
           </p>
         </>
       )}
@@ -224,17 +285,58 @@ export default function SetupPage() {
           <div className="card mb-3 px-4 py-3 text-sm">
             <p className="font-bold">מול {opponent}</p>
             <p className="text-[var(--muted)]">
-              פותחים:{" "}
+              על המגרש:{" "}
               <span className="tabular text-[var(--accent)]">
                 {starterCount}/{MAX_STARTERS}
               </span>
               {" · "}
-              ספסל: <span className="tabular">{selectedCount - starterCount}</span>
+              ספסל: <span className="tabular">{benchSquad.length}</span>
             </p>
           </div>
           <p className="mb-2 text-[11px] text-[var(--muted-2)]">
-            לחץ XI על עד {MAX_STARTERS} שחקני שדה. השאר יישמרו כספסל לחילופים.
+            לחץ על שחקן מהספסל ואז על עמדה במגרש. לחיצה על שחקן במגרש ואז על עמדה אחרת מחליפה מקום.
           </p>
+          <div className="mb-3 flex gap-2">
+            <button type="button" onClick={autoFill} className="btn btn-ghost h-9 flex-1 text-xs">
+              סדר אוטומטית
+            </button>
+            {pickId && onPitchIds.has(pickId) && (
+              <button
+                type="button"
+                onClick={() => removeFromPitch(pickId)}
+                className="btn btn-danger h-9 flex-1 text-xs"
+              >
+                הורד לספסל
+              </button>
+            )}
+          </div>
+          <LineupPitch
+            occupants={occupants}
+            onSlotClick={onSlotClick}
+            highlightPlayerId={pickId}
+            showSlotLabels
+          />
+          <p className="label mt-3 mb-2">ספסל — לחץ ואז בחר עמדה</p>
+          <div className="grid grid-cols-4 gap-2">
+            {benchSquad.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPickId((cur) => (cur === p.id ? null : p.id))}
+                className={`btn card flex-col py-2.5 active:scale-95 ${
+                  pickId === p.id ? "border-[var(--accent)] bg-[var(--accent)]/15" : ""
+                }`}
+              >
+                <span className="text-xl font-black tabular">
+                  {sel[p.id]?.number || p.shirt_number}
+                </span>
+                <span className="max-w-full truncate text-[11px] text-[var(--muted)]">{p.name}</span>
+              </button>
+            ))}
+            {benchSquad.length === 0 && (
+              <p className="col-span-4 text-center text-sm text-[var(--muted)]">הספסל ריק</p>
+            )}
+          </div>
         </>
       )}
 
@@ -295,40 +397,6 @@ export default function SetupPage() {
         </ul>
       )}
 
-      {step === 2 && (
-        <ul className="flex flex-col gap-2">
-          {selectedSquad.map((p) => {
-            const s = sel[p.id];
-            const isXi = s?.starter === true;
-            return (
-              <li
-                key={p.id}
-                className={`card flex items-center gap-3 p-2.5 ${isXi ? "border-[var(--accent)]/40" : ""}`}
-              >
-                <span className="field flex h-11 w-14 shrink-0 items-center justify-center px-0 text-lg font-extrabold tabular">
-                  {s?.number}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-bold">{p.name}</p>
-                  <p className="text-xs text-[var(--muted)]">{isXi ? "הרכב פותח" : "ספסל"}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => toggleStarter(p.id)}
-                  className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black ${
-                    isXi
-                      ? "bg-[var(--accent)] text-[#04150e]"
-                      : "bg-[var(--panel-strong)] text-[var(--muted)]"
-                  }`}
-                >
-                  {isXi ? "XI" : "ספסל"}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-
       {error && <p className="mt-3 text-[var(--danger)]">{error}</p>}
 
       <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md p-4">
@@ -338,7 +406,7 @@ export default function SetupPage() {
             disabled={!isSupabaseConfigured || squad.length === 0}
             className="btn btn-primary w-full py-4 text-lg shadow-2xl"
           >
-            המשך להרכב פותח ← ({selectedCount})
+            המשך להרכב ← ({selectedCount})
           </button>
         ) : (
           <button
@@ -348,7 +416,7 @@ export default function SetupPage() {
           >
             {saving
               ? "מתחיל..."
-              : `התחל משחק ← (${starterCount} פותחים · ${selectedCount - starterCount} ספסל)`}
+              : `התחל משחק ← (${starterCount} על המגרש · ${benchSquad.length} ספסל)`}
           </button>
         )}
       </div>

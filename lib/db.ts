@@ -156,6 +156,7 @@ export async function addPlayers(
     position?: string | null;
     is_starter?: boolean;
     on_pitch?: boolean;
+    lineup_slot?: number | null;
   }[]
 ): Promise<Player[]> {
   const supabase = requireClient();
@@ -169,6 +170,7 @@ export async function addPlayers(
       position: p.position ?? null,
       is_starter: starter,
       on_pitch: p.on_pitch ?? starter,
+      lineup_slot: p.lineup_slot ?? null,
     };
   });
   const { data, error } = await supabase.from("players").insert(rows).select();
@@ -186,14 +188,28 @@ export async function updatePlayerStarter(id: string, is_starter: boolean): Prom
 }
 
 export async function setPlayersLineup(
-  updates: { id: string; is_starter: boolean; on_pitch: boolean }[]
+  updates: { id: string; is_starter: boolean; on_pitch: boolean; lineup_slot?: number | null }[]
 ): Promise<void> {
   const supabase = requireClient();
   for (const u of updates) {
-    const { error } = await supabase
-      .from("players")
-      .update({ is_starter: u.is_starter, on_pitch: u.on_pitch })
-      .eq("id", u.id);
+    const patch: Record<string, unknown> = {
+      is_starter: u.is_starter,
+      on_pitch: u.on_pitch,
+    };
+    if (u.lineup_slot !== undefined) patch.lineup_slot = u.lineup_slot;
+    const { error } = await supabase.from("players").update(patch).eq("id", u.id);
+    if (error) throw error;
+  }
+}
+
+export async function updatePlayerSlots(
+  updates: { id: string; lineup_slot: number | null; on_pitch?: boolean }[]
+): Promise<void> {
+  const supabase = requireClient();
+  for (const u of updates) {
+    const patch: Record<string, unknown> = { lineup_slot: u.lineup_slot };
+    if (u.on_pitch !== undefined) patch.on_pitch = u.on_pitch;
+    const { error } = await supabase.from("players").update(patch).eq("id", u.id);
     if (error) throw error;
   }
 }
@@ -217,6 +233,7 @@ export async function recordSubstitution(input: {
   player_in_id: string;
   half: Half;
   match_minute: number;
+  lineup_slot?: number | null;
 }): Promise<Substitution> {
   const supabase = requireClient();
   const { data, error } = await supabase
@@ -232,9 +249,25 @@ export async function recordSubstitution(input: {
     .single();
   if (error) throw error;
 
+  let slot = input.lineup_slot;
+  if (slot === undefined) {
+    const { data: outRow } = await supabase
+      .from("players")
+      .select("lineup_slot")
+      .eq("id", input.player_out_id)
+      .single();
+    slot = (outRow as { lineup_slot?: number | null } | null)?.lineup_slot ?? null;
+  }
+
   const [outRes, inRes] = await Promise.all([
-    supabase.from("players").update({ on_pitch: false }).eq("id", input.player_out_id),
-    supabase.from("players").update({ on_pitch: true }).eq("id", input.player_in_id),
+    supabase
+      .from("players")
+      .update({ on_pitch: false, lineup_slot: null })
+      .eq("id", input.player_out_id),
+    supabase
+      .from("players")
+      .update({ on_pitch: true, lineup_slot: slot ?? null })
+      .eq("id", input.player_in_id),
   ]);
   if (outRes.error) throw outRes.error;
   if (inRes.error) throw inRes.error;
@@ -246,10 +279,15 @@ export async function deleteSubstitution(sub: Substitution): Promise<void> {
   const supabase = requireClient();
   const { error } = await supabase.from("substitutions").delete().eq("id", sub.id);
   if (error) throw error;
-  // שחזור מצב מגרש בסיסי: יוצא חוזר, נכנס יורד (רק אם אין חילופים מאוחרים יותר — הקורא אחראי)
+  const { data: inRow } = await supabase
+    .from("players")
+    .select("lineup_slot")
+    .eq("id", sub.player_in_id)
+    .single();
+  const slot = (inRow as { lineup_slot?: number | null } | null)?.lineup_slot ?? null;
   await Promise.all([
-    supabase.from("players").update({ on_pitch: true }).eq("id", sub.player_out_id),
-    supabase.from("players").update({ on_pitch: false }).eq("id", sub.player_in_id),
+    supabase.from("players").update({ on_pitch: true, lineup_slot: slot }).eq("id", sub.player_out_id),
+    supabase.from("players").update({ on_pitch: false, lineup_slot: null }).eq("id", sub.player_in_id),
   ]);
 }
 

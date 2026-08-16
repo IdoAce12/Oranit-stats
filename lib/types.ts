@@ -50,6 +50,8 @@ export interface Player {
   is_starter?: boolean;
   /** על המגרש כרגע (מתעדכן בחילוף) */
   on_pitch?: boolean;
+  /** עמדה בפורמציה 4-3-3 (0–9). null = ספסל */
+  lineup_slot?: number | null;
 }
 
 export interface Substitution {

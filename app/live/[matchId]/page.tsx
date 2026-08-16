@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { LineupPitch } from "../../components/LineupPitch";
 import {
   addPlayers,
   addSquadPlayer,
@@ -13,7 +14,9 @@ import {
   getSubstitutions,
   listSquad,
   recordSubstitution,
+  updatePlayerSlots,
 } from "@/lib/db";
+import { resolveOccupants, slotOfPlayer } from "@/lib/formation";
 import { clockDisplay, readClockState } from "@/lib/matchClock";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import {
@@ -40,7 +43,6 @@ import {
   ShotLocation,
   SquadPlayer,
   Substitution,
-  TEAM_ACTIONS,
   Zone,
   ZONE_LABELS,
 } from "@/lib/types";
@@ -62,6 +64,7 @@ const ACTION_BTN: Record<ActionType, string> = {
 };
 
 type SubPhase = "out" | "in" | null;
+type ModalPhase = "action" | "zone" | "box" | null;
 
 export default function LivePage() {
   const params = useParams<{ matchId: string }>();
@@ -92,8 +95,9 @@ export default function LivePage() {
 
   const clockRef = useRef<{ half: Half; minute: number }>({ half: 1, minute: 0 });
 
+  const [modalPlayerId, setModalPlayerId] = useState<string | null>(null);
   const [modalAction, setModalAction] = useState<ActionType | null>(null);
-  const [modalPlayerId, setModalPlayerId] = useState<string | null | undefined>(undefined);
+  const [modalPhase, setModalPhase] = useState<ModalPhase>(null);
 
   const refreshPending = useCallback(() => setPending(pendingCount()), []);
 
@@ -142,7 +146,27 @@ export default function LivePage() {
           return;
         }
         setMatch(m);
-        setPlayers(ps);
+
+        const occupants = resolveOccupants(ps);
+        const patched = ps.map((p) => {
+          const slot = occupants.findIndex((o) => o?.id === p.id);
+          if (slot >= 0) return { ...p, lineup_slot: slot };
+          if (p.on_pitch === false && p.lineup_slot != null) return { ...p, lineup_slot: null };
+          return p;
+        });
+        setPlayers(patched);
+        const slotFixes = patched
+          .filter((p, i) => p.lineup_slot !== ps[i].lineup_slot)
+          .map((p) => ({ id: p.id, lineup_slot: p.lineup_slot ?? null }));
+        if (slotFixes.length > 0) {
+          updatePlayerSlots(slotFixes).catch((e) => {
+            const msg = e instanceof Error ? e.message : "";
+            if (/lineup_slot/i.test(msg)) {
+              setNotice("חסרה עמודת הרכב — הרץ db/migration_v6.sql ב-Supabase");
+            }
+          });
+        }
+
         setSquad(sq);
         setSubs(subList);
         const pendingForMatch = getPending().filter((e) => e.match_id === matchId);
@@ -178,32 +202,39 @@ export default function LivePage() {
       setEvents((prev) => [...prev, { ...row, synced: false }]);
       refreshPending();
       setModalAction(null);
-      setModalPlayerId(undefined);
+      setModalPlayerId(null);
+      setModalPhase(null);
       tapFeedback();
       trySync();
     },
     [matchId, refreshPending, trySync]
   );
 
-  const onActionClick = (action: ActionType) => {
-    if (TEAM_ACTIONS.includes(action)) {
-      commit(action, null, null, null);
-      return;
-    }
+  const openPlayerActions = (playerId: string) => {
     tapFeedback(8);
-    setModalAction(action);
-    setModalPlayerId(undefined);
+    setModalPlayerId(playerId);
+    setModalAction(null);
+    setModalPhase("action");
   };
 
-  const onPlayerPick = (playerId: string | null) => {
-    if (!modalAction) return;
-    const needsZone = ACTIONS_NEED_ZONE.includes(modalAction);
-    const needsShot = ACTIONS_NEED_SHOT_LOCATION.includes(modalAction);
-    if (needsZone || needsShot) {
-      setModalPlayerId(playerId);
+  const onTeamAction = (action: ActionType) => {
+    commit(action, null, null, null);
+  };
+
+  const onActionPick = (action: ActionType) => {
+    if (!modalPlayerId) return;
+    tapFeedback(8);
+    if (ACTIONS_NEED_ZONE.includes(action)) {
+      setModalAction(action);
+      setModalPhase("zone");
       return;
     }
-    commit(modalAction, playerId, null, null);
+    if (ACTIONS_NEED_SHOT_LOCATION.includes(action)) {
+      setModalAction(action);
+      setModalPhase("box");
+      return;
+    }
+    commit(action, modalPlayerId, null, null);
   };
 
   const undoLast = async () => {
@@ -253,6 +284,8 @@ export default function LivePage() {
     return players.filter((p) => !pitchIds.has(p.id));
   }, [players, pitchPlayers]);
 
+  const occupants = useMemo(() => resolveOccupants(pitchPlayers), [pitchPlayers]);
+
   const parseShirt = (raw: string): number | null => {
     const digits = raw.replace(/[^\d]/g, "");
     if (!digits) return null;
@@ -273,6 +306,7 @@ export default function LivePage() {
           position: s.position,
           is_starter: false,
           on_pitch: false,
+          lineup_slot: null,
         },
       ]);
       if (added) setPlayers((prev) => [...prev, added].sort((a, b) => a.shirt_number - b.shirt_number));
@@ -303,6 +337,7 @@ export default function LivePage() {
           name: newName.trim(),
           is_starter: false,
           on_pitch: false,
+          lineup_slot: null,
         },
       ]);
       if (added) setPlayers((prev) => [...prev, added].sort((a, b) => a.shirt_number - b.shirt_number));
@@ -319,6 +354,7 @@ export default function LivePage() {
     setSubPhase("out");
     setSubOutId(null);
     setNotice(null);
+    closeModal();
   };
 
   const closeSub = () => {
@@ -329,6 +365,7 @@ export default function LivePage() {
   const confirmSub = async (inId: string) => {
     if (!subOutId) return;
     setSubBusy(true);
+    const slot = slotOfPlayer(occupants, subOutId);
     try {
       const sub = await recordSubstitution({
         match_id: matchId,
@@ -336,62 +373,51 @@ export default function LivePage() {
         player_in_id: inId,
         half: clockRef.current.half,
         match_minute: clockRef.current.minute,
+        lineup_slot: slot,
       });
       setSubs((prev) => [...prev, sub]);
       setPlayers((prev) =>
         prev.map((p) => {
-          if (p.id === subOutId) return { ...p, on_pitch: false };
-          if (p.id === inId) return { ...p, on_pitch: true };
+          if (p.id === subOutId) return { ...p, on_pitch: false, lineup_slot: null };
+          if (p.id === inId) return { ...p, on_pitch: true, lineup_slot: slot };
           return p;
         })
       );
       tapFeedback();
       closeSub();
     } catch {
-      setNotice("חילוף נכשל — הרץ migration_v5.sql ב-Supabase");
+      setNotice("חילוף נכשל — הרץ migration_v5.sql / migration_v6.sql ב-Supabase");
     } finally {
       setSubBusy(false);
     }
   };
 
-  const modalPhase: "player" | "zone" | "box" | null = useMemo(() => {
-    if (!modalAction) return null;
-    if (modalPlayerId === undefined) return "player";
-    if (ACTIONS_NEED_ZONE.includes(modalAction)) return "zone";
-    if (ACTIONS_NEED_SHOT_LOCATION.includes(modalAction)) return "box";
-    return null;
-  }, [modalAction, modalPlayerId]);
-
-  const recent = useMemo(() => [...events].slice(-8).reverse(), [events]);
-
-  /** שחקנים אחרונים שנרשמו — לקיצור בבחירה */
-  const recentPlayerIds = useMemo(() => {
-    const ids: string[] = [];
-    for (let i = events.length - 1; i >= 0 && ids.length < 4; i--) {
-      const id = events[i].player_id;
-      if (id && !ids.includes(id)) ids.push(id);
-    }
-    return ids;
-  }, [events]);
-
-  const sortedPlayers = useMemo(() => {
-    const pitchIds = new Set(pitchPlayers.map((p) => p.id));
-    return [...players].sort((a, b) => {
-      const ap = pitchIds.has(a.id) ? 0 : 1;
-      const bp = pitchIds.has(b.id) ? 0 : 1;
-      if (ap !== bp) return ap - bp;
-      return a.shirt_number - b.shirt_number;
-    });
-  }, [players, pitchPlayers]);
+  const recent = useMemo(() => [...events].slice(-6).reverse(), [events]);
 
   const playerLabel = (id: string | null) => {
     if (!id) return "—";
     const p = players.find((x) => x.id === id);
     return p ? `#${p.shirt_number}` : "?";
   };
+
+  const modalPlayer = modalPlayerId ? players.find((p) => p.id === modalPlayerId) : null;
+
   const closeModal = () => {
     setModalAction(null);
-    setModalPlayerId(undefined);
+    setModalPlayerId(null);
+    setModalPhase(null);
+  };
+
+  const onPitchSlot = (_slot: number, player: { id: string } | null) => {
+    if (!player) return;
+    if (subPhase === "out") {
+      setSubOutId(player.id);
+      setSubPhase("in");
+      tapFeedback(8);
+      return;
+    }
+    if (subPhase === "in") return;
+    openPlayerActions(player.id);
   };
 
   if (loading) return <main className="p-8 text-center text-[var(--muted)]">טוען משחק...</main>;
@@ -418,7 +444,7 @@ export default function LivePage() {
         </Link>
         <div className="text-center">
           <p className="text-sm font-extrabold">מול {match?.opponent}</p>
-          <p className="text-[11px] text-[var(--muted)]">משחק חי</p>
+          <p className="text-[11px] text-[var(--muted)]">לחץ על שחקן במגרש</p>
         </div>
         <Link
           href={`/report/${matchId}`}
@@ -457,36 +483,65 @@ export default function LivePage() {
         }}
       />
 
-      <div className="mt-3 grid grid-cols-2 gap-2.5">
-        {PRIMARY_ACTIONS.map((action) => (
-          <button
-            key={action}
-            onClick={() => onActionClick(action)}
-            className={`btn rounded-2xl py-8 text-xl ${ACTION_BTN[action]}`}
-          >
-            {ACTION_LABELS[action]}
-          </button>
-        ))}
+      {subPhase && (
+        <div className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-bold text-amber-200">
+              {subPhase === "out"
+                ? "חילוף — לחץ על מי שיוצא במגרש"
+                : `מי נכנס במקום #${players.find((p) => p.id === subOutId)?.shirt_number ?? "?"}? לחץ בספסל`}
+            </p>
+            <button onClick={closeSub} className="btn btn-ghost h-7 shrink-0 px-3 text-xs">
+              בטל
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3">
+        <LineupPitch
+          occupants={occupants}
+          onSlotClick={onPitchSlot}
+          highlightPlayerId={subOutId ?? modalPlayerId}
+          disabled={subBusy}
+        />
       </div>
 
-      <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-        {SCORE_ACTIONS.map((action) => (
-          <button
-            key={action}
-            onClick={() => onActionClick(action)}
-            className={`btn rounded-2xl py-6 text-xl ${ACTION_BTN[action]}`}
-          >
-            {ACTION_LABELS[action]}
-          </button>
-        ))}
+      <div className="mt-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="label">ספסל</p>
+          <span className="text-[10px] text-[var(--muted-2)]">
+            {pitchPlayers.length}/{MAX_STARTERS} על המגרש
+          </span>
+        </div>
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {benchPlayers.length === 0 && (
+            <p className="text-xs text-[var(--muted-2)]">אין שחקנים בספסל</p>
+          )}
+          {benchPlayers.map((p) => (
+            <button
+              key={p.id}
+              disabled={subBusy || (subPhase !== null && subPhase !== "in")}
+              onClick={() => {
+                if (subPhase === "in") confirmSub(p.id);
+              }}
+              className={`btn card shrink-0 flex-col px-3 py-2 ${
+                subPhase === "in" ? "border-[var(--accent)]/40" : ""
+              }`}
+            >
+              <span className="text-lg font-black tabular">{p.shirt_number}</span>
+              <span className="max-w-[4.5rem] truncate text-[10px] text-[var(--muted)]">{p.name}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mt-2.5 grid grid-cols-2 gap-2.5">
         {CORNER_ACTIONS.map((action) => (
           <button
             key={action}
-            onClick={() => onActionClick(action)}
-            className={`btn rounded-2xl py-4 text-base ${ACTION_BTN[action]}`}
+            onClick={() => onTeamAction(action)}
+            className={`btn rounded-2xl py-3 text-sm ${ACTION_BTN[action]}`}
           >
             {ACTION_LABELS[action]}
           </button>
@@ -494,11 +549,11 @@ export default function LivePage() {
       </div>
 
       <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-        <button onClick={openSub} className="btn btn-ghost rounded-2xl py-4 text-base font-extrabold">
+        <button onClick={openSub} className="btn btn-ghost rounded-2xl py-3 text-base font-extrabold">
           ⟳ חילוף
         </button>
-        <button onClick={() => setRosterOpen(true)} className="btn btn-ghost rounded-2xl py-4 text-base">
-          הרכב · {pitchPlayers.length} על המגרש
+        <button onClick={() => setRosterOpen(true)} className="btn btn-ghost rounded-2xl py-3 text-base">
+          סגל · {players.length}
         </button>
       </div>
 
@@ -546,8 +601,7 @@ export default function LivePage() {
         </button>
       </div>
 
-      {/* פופ-אפ בחירה מהירה */}
-      {modalPhase && (
+      {modalPhase && modalPlayer && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm" onClick={closeModal}>
           <div
             className="sheet max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[#0c1322] p-4 pb-8"
@@ -555,67 +609,39 @@ export default function LivePage() {
           >
             <div className="mb-4 flex items-center justify-between">
               <span className="text-lg font-extrabold">
-                {modalAction && ACTION_LABELS[modalAction]}
-                {modalPhase === "zone" && " · באיזה אזור?"}
+                #{modalPlayer.shirt_number} {modalPlayer.name}
+                {modalPhase === "action" && " · מה קרה?"}
+                {modalPhase === "zone" && modalAction && ` · ${ACTION_LABELS[modalAction]} · אזור?`}
                 {modalPhase === "box" && " · מאיפה הבעיטה?"}
-                {modalPhase === "player" && " · איזה שחקן?"}
               </span>
               <button onClick={closeModal} className="btn btn-ghost h-8 px-3 text-sm">
                 בטל
               </button>
             </div>
 
-            {modalPhase === "player" && (
-              <div className="flex flex-col gap-3">
-                {recentPlayerIds.length > 0 && (
-                  <div>
-                    <p className="label mb-2">אחרונים</p>
-                    <div className="grid grid-cols-4 gap-2">
-                      {recentPlayerIds.map((id) => {
-                        const p = players.find((x) => x.id === id);
-                        if (!p) return null;
-                        return (
-                          <button
-                            key={id}
-                            onClick={() => onPlayerPick(id)}
-                            className="btn rounded-2xl border border-[var(--accent)]/40 bg-[var(--accent)]/10 py-3 active:scale-95"
-                          >
-                            <span className="text-2xl font-black">{p.shirt_number}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-                <div>
-                  <p className="label mb-2">על המגרש קודם</p>
-                  <div className="grid grid-cols-4 gap-2.5">
-                    {sortedPlayers.map((p) => {
-                      const onField = pitchPlayers.some((x) => x.id === p.id);
-                      return (
-                      <button
-                        key={p.id}
-                        onClick={() => onPlayerPick(p.id)}
-                        className={`btn card flex-col py-3 active:scale-95 ${
-                          onField ? "" : "opacity-55"
-                        }`}
-                      >
-                        <span className="text-2xl font-black">{p.shirt_number}</span>
-                        <span className="mt-0.5 max-w-full truncate text-[11px] font-medium text-[var(--muted)]">
-                          {p.name}
-                        </span>
-                        <span className="text-[9px] text-[var(--muted-2)]">
-                          {onField ? "מגרש" : "ספסל"}
-                        </span>
-                      </button>
-                    );})}
+            {modalPhase === "action" && (
+              <div className="flex flex-col gap-2.5">
+                <div className="grid grid-cols-2 gap-2.5">
+                  {PRIMARY_ACTIONS.map((action) => (
                     <button
-                      onClick={() => onPlayerPick(null)}
-                      className="btn card col-span-4 py-3 text-sm text-[var(--muted)]"
+                      key={action}
+                      onClick={() => onActionPick(action)}
+                      className={`btn rounded-2xl py-7 text-lg ${ACTION_BTN[action]}`}
                     >
-                      ללא שחקן
+                      {ACTION_LABELS[action]}
                     </button>
-                  </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {SCORE_ACTIONS.map((action) => (
+                    <button
+                      key={action}
+                      onClick={() => onActionPick(action)}
+                      className={`btn rounded-2xl py-6 text-lg ${ACTION_BTN[action]}`}
+                    >
+                      {ACTION_LABELS[action]}
+                    </button>
+                  ))}
                 </div>
               </div>
             )}
@@ -625,7 +651,7 @@ export default function LivePage() {
                 {(["def", "mid", "att"] as Zone[]).map((z) => (
                   <button
                     key={z}
-                    onClick={() => modalAction && commit(modalAction, modalPlayerId ?? null, z, null)}
+                    onClick={() => modalAction && commit(modalAction, modalPlayerId, z, null)}
                     className={`btn rounded-2xl py-9 text-lg ${
                       z === "def"
                         ? "bg-red-500/80 text-white"
@@ -645,7 +671,7 @@ export default function LivePage() {
                 {(["in_box", "out_box"] as ShotLocation[]).map((loc) => (
                   <button
                     key={loc}
-                    onClick={() => modalAction && commit(modalAction, modalPlayerId ?? null, null, loc)}
+                    onClick={() => modalAction && commit(modalAction, modalPlayerId, null, loc)}
                     className={`btn rounded-2xl py-9 text-lg ${
                       loc === "in_box" ? "bg-emerald-500/80 text-[#04150e]" : "btn-ghost"
                     }`}
@@ -659,77 +685,6 @@ export default function LivePage() {
         </div>
       )}
 
-      {/* חילוף */}
-      {subPhase && (
-        <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm" onClick={closeSub}>
-          <div
-            className="sheet max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[#0c1322] p-4 pb-8"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <span className="text-lg font-extrabold">
-                {subPhase === "out" ? "מי יוצא?" : "מי נכנס מהספסל?"}
-              </span>
-              <button onClick={closeSub} className="btn btn-ghost h-8 px-3 text-sm">
-                בטל
-              </button>
-            </div>
-            <p className="mb-3 text-xs text-[var(--muted)]">
-              דקה נוכחית: <b className="tabular text-[var(--text)]">{clockRef.current.minute}׳</b>
-              {subOutId && (
-                <>
-                  {" · "}יוצא:{" "}
-                  <b>
-                    #{players.find((p) => p.id === subOutId)?.shirt_number}{" "}
-                    {players.find((p) => p.id === subOutId)?.name}
-                  </b>
-                </>
-              )}
-            </p>
-            {subPhase === "out" && (
-              <div className="grid grid-cols-4 gap-2.5">
-                {pitchPlayers.map((p) => (
-                  <button
-                    key={p.id}
-                    disabled={subBusy}
-                    onClick={() => {
-                      setSubOutId(p.id);
-                      setSubPhase("in");
-                    }}
-                    className="btn card flex-col py-3 active:scale-95"
-                  >
-                    <span className="text-2xl font-black">{p.shirt_number}</span>
-                    <span className="max-w-full truncate text-[11px] text-[var(--muted)]">{p.name}</span>
-                  </button>
-                ))}
-                {pitchPlayers.length === 0 && (
-                  <p className="col-span-4 text-center text-sm text-[var(--muted)]">אין שחקנים על המגרש</p>
-                )}
-              </div>
-            )}
-            {subPhase === "in" && (
-              <div className="grid grid-cols-4 gap-2.5">
-                {benchPlayers.map((p) => (
-                  <button
-                    key={p.id}
-                    disabled={subBusy}
-                    onClick={() => confirmSub(p.id)}
-                    className="btn card flex-col border border-[var(--accent)]/30 py-3 active:scale-95"
-                  >
-                    <span className="text-2xl font-black">{p.shirt_number}</span>
-                    <span className="max-w-full truncate text-[11px] text-[var(--muted)]">{p.name}</span>
-                  </button>
-                ))}
-                {benchPlayers.length === 0 && (
-                  <p className="col-span-4 text-center text-sm text-[var(--muted)]">אין שחקנים בספסל</p>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* אישור סיום משחק */}
       {confirmEnd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm" onClick={() => setConfirmEnd(false)}>
           <div className="sheet card w-full max-w-xs p-5 text-center" onClick={(e) => e.stopPropagation()}>
@@ -749,7 +704,6 @@ export default function LivePage() {
         </div>
       )}
 
-      {/* גיליון ניהול הרכב */}
       {rosterOpen && (
         <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm" onClick={() => setRosterOpen(false)}>
           <div
@@ -757,13 +711,12 @@ export default function LivePage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
-              <span className="text-lg font-extrabold">הרכב המשחק</span>
+              <span className="text-lg font-extrabold">סגל המשחק</span>
               <button onClick={() => setRosterOpen(false)} className="btn btn-ghost h-8 px-3 text-sm">
                 סגור
               </button>
             </div>
 
-            {/* שחקנים במשחק */}
             <div className="mb-4">
               <p className="label mb-2">על המגרש ({pitchPlayers.length}/{MAX_STARTERS})</p>
               <div className="mb-3 flex flex-col gap-2">
@@ -797,7 +750,6 @@ export default function LivePage() {
               </div>
             </div>
 
-            {/* הוספה מהסגל */}
             {availableSquad.length > 0 && (
               <div className="mb-4">
                 <p className="label mb-2">הוסף מהסגל</p>
@@ -817,7 +769,6 @@ export default function LivePage() {
               </div>
             )}
 
-            {/* הוספת שחקן חדש */}
             <div>
               <p className="label mb-2">הוסף שחקן חדש</p>
               <div className="flex items-stretch gap-2">
