@@ -17,7 +17,7 @@ type SortKey =
   | "assists"
   | "keyPasses"
   | "tackles"
-  | "defLosses"
+  | "lossesTotal"
   | "matchesPlayed";
 
 const LOAD_TIMEOUT_MS = 12000;
@@ -77,7 +77,7 @@ export default function SeasonPage() {
     const withActivity = base.filter(
       (r) =>
         r.score !== 0 ||
-        r.goals + r.assists + r.keyPasses + r.tackles + r.defLosses + r.shotsInBox > 0
+        r.goals + r.assists + r.keyPasses + r.tackles + r.lossesTotal + r.shotsInBox > 0
     );
     const list = withActivity.length > 0 ? withActivity : base;
     return [...list].sort((a, b) => sortValue(b, sortKey) - sortValue(a, sortKey));
@@ -129,7 +129,7 @@ export default function SeasonPage() {
             ["assists", "בישולים"],
             ["keyPasses", "מס״מ"],
             ["tackles", "חילוצים"],
-            ["defLosses", "איבודי הגנה"],
+            ["lossesTotal", "איבודים"],
             ["matchesPlayed", "משחקים"],
           ] as [SortKey, string][]
         ).map(([k, label]) => (
@@ -202,7 +202,7 @@ export default function SeasonPage() {
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
                     {row.matchesPlayed} מש׳ · {row.goals} שער · {row.assists} ביש · {row.keyPasses}{" "}
-                    מס״מ · {row.tackles} חילוץ · {row.defLosses} איב׳ הגנה
+                    מס״מ · {row.tackles} חילוץ · {row.lossesTotal} איבודים
                   </p>
                 </div>
                 <div className="text-left">
@@ -240,8 +240,7 @@ export default function SeasonPage() {
                   <th className="px-1.5 py-2">ביש</th>
                   <th className="px-1.5 py-2">מס״מ</th>
                   <th className="px-1.5 py-2">חילוץ</th>
-                  <th className="px-1.5 py-2">איב׳</th>
-                  <th className="px-1.5 py-2">הגנה</th>
+                  <th className="px-1.5 py-2">איבודים</th>
                   <th className="px-1.5 py-2">רחבה</th>
                   <th className="px-1.5 py-2">ציון</th>
                   <th className="px-1.5 py-2">ממ׳</th>
@@ -266,8 +265,7 @@ export default function SeasonPage() {
                     <td className="tabular px-1.5 py-2 text-[var(--info)]">{row.assists}</td>
                     <td className="tabular px-1.5 py-2">{row.keyPasses}</td>
                     <td className="tabular px-1.5 py-2">{row.tackles}</td>
-                    <td className="tabular px-1.5 py-2">{row.lossesTotal}</td>
-                    <td className="tabular px-1.5 py-2 text-[var(--danger)]">{row.defLosses}</td>
+                    <td className="tabular px-1.5 py-2 text-[var(--danger)]">{row.lossesTotal}</td>
                     <td className="tabular px-1.5 py-2">{row.shotsInBox}</td>
                     <td
                       className={`tabular px-1.5 py-2 font-black ${

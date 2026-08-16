@@ -182,7 +182,7 @@ export default function SeasonPlayerPage() {
                   </p>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
                     {line.goals} שער · {line.assists} ביש · {line.keyPasses} מס״מ · {line.tackles}{" "}
-                    חילוץ · {line.defLosses} איב׳ הגנה
+                    חילוץ · {line.losses} איבודים
                   </p>
                 </div>
                 <div
