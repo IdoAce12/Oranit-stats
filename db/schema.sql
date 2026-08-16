@@ -22,6 +22,7 @@ create table if not exists public.matches (
   our_team_name text not null default '',
   status text not null default 'live' check (status in ('live','finished')),
   ended_at timestamptz,
+  notes text not null default '',
   created_at timestamptz not null default now()
 );
 
@@ -32,7 +33,8 @@ create table if not exists public.players (
   squad_player_id uuid references public.squad_players(id) on delete set null,
   shirt_number int not null,
   name text not null,
-  position text
+  position text,
+  is_starter boolean not null default true
 );
 
 create index if not exists players_match_idx on public.players(match_id);

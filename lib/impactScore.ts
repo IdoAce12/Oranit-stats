@@ -139,14 +139,19 @@ export interface SeasonImpact {
   key: string;
   label: string;
   shirtNumber: number | null;
+  squadPlayerId: string | null;
   score: number;
   matchesPlayed: number;
   keyPasses: number;
   goals: number;
   assists: number;
   tackles: number;
+  lossesTotal: number;
   defLosses: number;
+  midLosses: number;
+  attLosses: number;
   shotsInBox: number;
+  shotsOutBox: number;
   perMatch: number;
 }
 
@@ -157,7 +162,6 @@ export function computeSeasonImpact(
 ): SeasonImpact[] {
   const squadById = new Map(squad.map((s) => [s.id, s]));
 
-  // מיפוי player_id (per-match) -> מפתח צבירה + תווית
   const keyOf = (p: Player) =>
     p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
 
@@ -182,14 +186,19 @@ export function computeSeasonImpact(
         key,
         label,
         shirtNumber: num,
+        squadPlayerId: p.squad_player_id,
         score: 0,
         matchesPlayed: 0,
         keyPasses: 0,
         goals: 0,
         assists: 0,
         tackles: 0,
+        lossesTotal: 0,
         defLosses: 0,
+        midLosses: 0,
+        attLosses: 0,
         shotsInBox: 0,
+        shotsOutBox: 0,
         perMatch: 0,
       });
     }
@@ -208,8 +217,16 @@ export function computeSeasonImpact(
     if (ev.action_type === "goal") entry.goals += 1;
     if (ev.action_type === "assist") entry.assists += 1;
     if (ev.action_type === "tackle") entry.tackles += 1;
-    if (ev.action_type === "ball_loss" && ev.zone === "def") entry.defLosses += 1;
-    if (ev.action_type === "shot" && ev.shot_location === "in_box") entry.shotsInBox += 1;
+    if (ev.action_type === "ball_loss") {
+      entry.lossesTotal += 1;
+      if (ev.zone === "def") entry.defLosses += 1;
+      if (ev.zone === "mid") entry.midLosses += 1;
+      if (ev.zone === "att") entry.attLosses += 1;
+    }
+    if (ev.action_type === "shot") {
+      if (ev.shot_location === "in_box") entry.shotsInBox += 1;
+      else entry.shotsOutBox += 1;
+    }
   }
 
   for (const [key, matches] of matchesByKey) {
@@ -221,4 +238,73 @@ export function computeSeasonImpact(
   }
 
   return Array.from(acc.values()).sort((a, b) => b.score - a.score);
+}
+
+export interface PlayerMatchLine {
+  matchId: string;
+  opponent: string;
+  matchDate: string;
+  goals: number;
+  assists: number;
+  keyPasses: number;
+  tackles: number;
+  losses: number;
+  defLosses: number;
+  shotsInBox: number;
+  score: number;
+}
+
+/** פירוט משחק-אחר-משחק לשחקן עונתי */
+export function computePlayerSeasonMatches(
+  playerKey: string,
+  events: MatchEvent[],
+  players: Player[],
+  matches: { id: string; opponent: string; match_date: string }[]
+): PlayerMatchLine[] {
+  const matchMeta = new Map(matches.map((m) => [m.id, m]));
+  const myPlayers = players.filter((p) => {
+    const key = p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
+    return key === playerKey;
+  });
+  const playerIds = new Set(myPlayers.map((p) => p.id));
+  const byMatch = new Map<string, PlayerMatchLine>();
+
+  for (const p of myPlayers) {
+    const m = matchMeta.get(p.match_id);
+    if (!byMatch.has(p.match_id)) {
+      byMatch.set(p.match_id, {
+        matchId: p.match_id,
+        opponent: m?.opponent ?? "?",
+        matchDate: m?.match_date ?? "",
+        goals: 0,
+        assists: 0,
+        keyPasses: 0,
+        tackles: 0,
+        losses: 0,
+        defLosses: 0,
+        shotsInBox: 0,
+        score: 0,
+      });
+    }
+  }
+
+  for (const ev of events) {
+    if (!ev.player_id || !playerIds.has(ev.player_id)) continue;
+    const line = byMatch.get(ev.match_id);
+    if (!line) continue;
+    line.score += scoreForEvent(ev);
+    if (ev.action_type === "goal") line.goals += 1;
+    if (ev.action_type === "assist") line.assists += 1;
+    if (ev.action_type === "key_pass") line.keyPasses += 1;
+    if (ev.action_type === "tackle") line.tackles += 1;
+    if (ev.action_type === "ball_loss") {
+      line.losses += 1;
+      if (ev.zone === "def") line.defLosses += 1;
+    }
+    if (ev.action_type === "shot" && ev.shot_location === "in_box") line.shotsInBox += 1;
+  }
+
+  return Array.from(byMatch.values()).sort((a, b) =>
+    (b.matchDate || "").localeCompare(a.matchDate || "")
+  );
 }

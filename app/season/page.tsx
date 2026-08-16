@@ -1,14 +1,24 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { loadSeasonBundle } from "@/lib/db";
-import { computeSeasonImpact } from "@/lib/impactScore";
+import { downloadCsv, seasonTableCsv } from "@/lib/exportCsv";
+import { computeSeasonImpact, SeasonImpact } from "@/lib/impactScore";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 
-type SortKey = "score" | "perMatch";
+type SortKey =
+  | "score"
+  | "perMatch"
+  | "goals"
+  | "assists"
+  | "keyPasses"
+  | "tackles"
+  | "defLosses"
+  | "matchesPlayed";
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -28,6 +38,10 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
+function sortValue(r: SeasonImpact, key: SortKey): number {
+  return r[key];
+}
+
 export default function SeasonPage() {
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -36,6 +50,7 @@ export default function SeasonPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("score");
+  const [view, setView] = useState<"cards" | "table">("cards");
 
   const load = () => {
     if (!isSupabaseConfigured) {
@@ -59,26 +74,26 @@ export default function SeasonPage() {
 
   const rows = useMemo(() => {
     const base = computeSeasonImpact(events, players, squad);
-    // מציגים רק שחקנים עם לפחות אירוע אחד או ציון ≠ 0
     const withActivity = base.filter(
       (r) =>
         r.score !== 0 ||
         r.goals + r.assists + r.keyPasses + r.tackles + r.defLosses + r.shotsInBox > 0
     );
     const list = withActivity.length > 0 ? withActivity : base;
-    if (sortKey === "perMatch") {
-      return [...list].sort((a, b) => b.perMatch - a.perMatch);
-    }
-    return list;
+    return [...list].sort((a, b) => sortValue(b, sortKey) - sortValue(a, sortKey));
   }, [events, players, squad, sortKey]);
 
   const maxAbs = useMemo(
-    () => Math.max(1, ...rows.map((r) => Math.abs(sortKey === "perMatch" ? r.perMatch : r.score))),
+    () => Math.max(1, ...rows.map((r) => Math.abs(sortValue(r, sortKey)))),
     [rows, sortKey]
   );
 
+  const exportSeason = () => {
+    downloadCsv("scout_season.csv", seasonTableCsv(rows));
+  };
+
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
       <AppHeader
         title="טבלה עונתית"
         subtitle={loading ? "טוען..." : `${matchesCount} משחקים · ${rows.length} שחקנים`}
@@ -89,17 +104,43 @@ export default function SeasonPage() {
 
       <div className="mb-3 flex gap-2">
         <button
-          onClick={() => setSortKey("score")}
-          className={`btn h-9 flex-1 text-sm ${sortKey === "score" ? "btn-primary" : "btn-ghost"}`}
+          onClick={() => setView("cards")}
+          className={`btn h-9 flex-1 text-sm ${view === "cards" ? "btn-primary" : "btn-ghost"}`}
         >
-          ציון מצטבר
+          כרטיסים
         </button>
         <button
-          onClick={() => setSortKey("perMatch")}
-          className={`btn h-9 flex-1 text-sm ${sortKey === "perMatch" ? "btn-primary" : "btn-ghost"}`}
+          onClick={() => setView("table")}
+          className={`btn h-9 flex-1 text-sm ${view === "table" ? "btn-primary" : "btn-ghost"}`}
         >
-          ממוצע למשחק
+          טבלה מלאה
         </button>
+        <button onClick={exportSeason} disabled={rows.length === 0} className="btn btn-ghost h-9 px-3 text-sm">
+          ⬇
+        </button>
+      </div>
+
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {(
+          [
+            ["score", "ציון"],
+            ["perMatch", "ממוצע"],
+            ["goals", "שערים"],
+            ["assists", "בישולים"],
+            ["keyPasses", "מס״מ"],
+            ["tackles", "חילוצים"],
+            ["defLosses", "איבודי הגנה"],
+            ["matchesPlayed", "משחקים"],
+          ] as [SortKey, string][]
+        ).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setSortKey(k)}
+            className={`btn h-8 px-2.5 text-xs ${sortKey === k ? "btn-primary" : "btn-ghost"}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {loading && (
@@ -128,12 +169,16 @@ export default function SeasonPage() {
         </div>
       )}
 
-      {!loading && rows.length > 0 && (
+      {!loading && rows.length > 0 && view === "cards" && (
         <div className="card divide-y divide-[var(--border)] overflow-hidden">
           {rows.map((row, i) => {
-            const value = sortKey === "perMatch" ? row.perMatch : row.score;
+            const value = sortValue(row, sortKey);
             return (
-              <div key={row.key} className="flex items-center gap-3 p-3">
+              <Link
+                key={row.key}
+                href={`/season/player/${encodeURIComponent(row.key)}`}
+                className="flex items-center gap-3 p-3 active:bg-white/[0.03]"
+              >
                 <span
                   className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-black ${
                     i === 0
@@ -156,8 +201,8 @@ export default function SeasonPage() {
                     />
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
-                    {row.matchesPlayed} משחקים · {row.goals} שערים · {row.assists} בישולים ·{" "}
-                    {row.keyPasses} מס״מ · {row.tackles} חילוצים · {row.defLosses} איבודי הגנה
+                    {row.matchesPlayed} מש׳ · {row.goals} שער · {row.assists} ביש · {row.keyPasses}{" "}
+                    מס״מ · {row.tackles} חילוץ · {row.defLosses} איב׳ הגנה
                   </p>
                 </div>
                 <div className="text-left">
@@ -170,16 +215,78 @@ export default function SeasonPage() {
                           : "text-[var(--muted)]"
                     }`}
                   >
-                    {value > 0 ? "+" : ""}
-                    {value.toFixed(1)}
+                    {typeof value === "number" && (sortKey === "score" || sortKey === "perMatch")
+                      ? `${value > 0 ? "+" : ""}${value.toFixed(1)}`
+                      : value}
                   </div>
-                  <div className="text-[10px] text-[var(--muted-2)]">
-                    {sortKey === "perMatch" ? "למשחק" : "מצטבר"}
-                  </div>
+                  <div className="text-[10px] text-[var(--muted-2)]">פרופיל ←</div>
                 </div>
-              </div>
+              </Link>
             );
           })}
+        </div>
+      )}
+
+      {!loading && rows.length > 0 && view === "table" && (
+        <div className="card overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-center text-xs">
+              <thead>
+                <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[10px] text-[var(--muted)]">
+                  <th className="sticky right-0 bg-[var(--panel-strong)] px-2 py-2 text-right">#</th>
+                  <th className="sticky right-8 bg-[var(--panel-strong)] px-2 py-2 text-right">שחקן</th>
+                  <th className="px-1.5 py-2">מש׳</th>
+                  <th className="px-1.5 py-2">שער</th>
+                  <th className="px-1.5 py-2">ביש</th>
+                  <th className="px-1.5 py-2">מס״מ</th>
+                  <th className="px-1.5 py-2">חילוץ</th>
+                  <th className="px-1.5 py-2">איב׳</th>
+                  <th className="px-1.5 py-2">הגנה</th>
+                  <th className="px-1.5 py-2">רחבה</th>
+                  <th className="px-1.5 py-2">ציון</th>
+                  <th className="px-1.5 py-2">ממ׳</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, i) => (
+                  <tr key={row.key} className="border-b border-[var(--border)]/50 odd:bg-white/[0.02]">
+                    <td className="sticky right-0 bg-[var(--bg)] px-2 py-2 tabular text-[var(--muted)]">
+                      {i + 1}
+                    </td>
+                    <td className="sticky right-8 bg-[var(--bg)] px-2 py-2 text-right">
+                      <Link
+                        href={`/season/player/${encodeURIComponent(row.key)}`}
+                        className="font-bold underline decoration-[var(--border-strong)] underline-offset-2"
+                      >
+                        {row.label}
+                      </Link>
+                    </td>
+                    <td className="tabular px-1.5 py-2">{row.matchesPlayed}</td>
+                    <td className="tabular px-1.5 py-2 font-bold text-[var(--accent)]">{row.goals}</td>
+                    <td className="tabular px-1.5 py-2 text-[var(--info)]">{row.assists}</td>
+                    <td className="tabular px-1.5 py-2">{row.keyPasses}</td>
+                    <td className="tabular px-1.5 py-2">{row.tackles}</td>
+                    <td className="tabular px-1.5 py-2">{row.lossesTotal}</td>
+                    <td className="tabular px-1.5 py-2 text-[var(--danger)]">{row.defLosses}</td>
+                    <td className="tabular px-1.5 py-2">{row.shotsInBox}</td>
+                    <td
+                      className={`tabular px-1.5 py-2 font-black ${
+                        row.score > 0
+                          ? "text-[var(--accent)]"
+                          : row.score < 0
+                            ? "text-[var(--danger)]"
+                            : ""
+                      }`}
+                    >
+                      {row.score > 0 ? "+" : ""}
+                      {row.score.toFixed(1)}
+                    </td>
+                    <td className="tabular px-1.5 py-2 text-[var(--muted)]">{row.perMatch.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </main>

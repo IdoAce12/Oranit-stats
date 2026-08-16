@@ -120,6 +120,12 @@ export async function reopenMatch(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function updateMatchNotes(id: string, notes: string): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("matches").update({ notes }).eq("id", id);
+  if (error) throw error;
+}
+
 // ---------------- שחקנים במשחק ----------------
 
 export async function getPlayers(matchId: string): Promise<Player[]> {
@@ -140,6 +146,7 @@ export async function addPlayers(
     shirt_number: number;
     name: string;
     position?: string | null;
+    is_starter?: boolean;
   }[]
 ): Promise<Player[]> {
   const supabase = requireClient();
@@ -149,10 +156,17 @@ export async function addPlayers(
     shirt_number: p.shirt_number,
     name: p.name,
     position: p.position ?? null,
+    is_starter: p.is_starter ?? true,
   }));
   const { data, error } = await supabase.from("players").insert(rows).select();
   if (error) throw error;
   return (data ?? []) as Player[];
+}
+
+export async function updatePlayerStarter(id: string, is_starter: boolean): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("players").update({ is_starter }).eq("id", id);
+  if (error) throw error;
 }
 
 // ---------------- אירועים ----------------
@@ -195,6 +209,7 @@ export async function loadSeasonBundle(): Promise<{
   events: MatchEvent[];
   players: Player[];
   squad: SquadPlayer[];
+  matches: Match[];
   matchesCount: number;
 }> {
   const supabase = requireClient();
@@ -205,23 +220,28 @@ export async function loadSeasonBundle(): Promise<{
       .limit(10000),
     supabase
       .from("players")
-      .select("id,match_id,squad_player_id,shirt_number,name,position")
+      .select("id,match_id,squad_player_id,shirt_number,name,position,is_starter")
       .limit(5000),
     supabase
       .from("squad_players")
       .select("id,shirt_number,name,position,active,created_at")
       .order("shirt_number", { ascending: true }),
-    // בלי head:true — יותר יציב בדפדפן
-    supabase.from("matches").select("id").limit(2000),
+    supabase
+      .from("matches")
+      .select("id,opponent,match_date,our_team_name,status,ended_at,created_at,notes")
+      .order("match_date", { ascending: false })
+      .limit(2000),
   ]);
   if (evRes.error) throw new Error(evRes.error.message);
   if (plRes.error) throw new Error(plRes.error.message);
   if (sqRes.error) throw new Error(sqRes.error.message);
   if (mRes.error) throw new Error(mRes.error.message);
+  const matches = (mRes.data ?? []) as Match[];
   return {
     events: (evRes.data ?? []) as MatchEvent[],
     players: (plRes.data ?? []) as Player[],
     squad: (sqRes.data ?? []) as SquadPlayer[],
-    matchesCount: (mRes.data ?? []).length,
+    matches,
+    matchesCount: matches.length,
   };
 }

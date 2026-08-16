@@ -11,6 +11,7 @@ import {
   getMatch,
   getPlayers,
   listSquad,
+  updatePlayerStarter,
 } from "@/lib/db";
 import {
   deleteRemote,
@@ -285,6 +286,37 @@ export default function LivePage() {
   }, [modalAction, modalPlayerId]);
 
   const recent = useMemo(() => [...events].slice(-8).reverse(), [events]);
+
+  /** שחקנים אחרונים שנרשמו — לקיצור בבחירה */
+  const recentPlayerIds = useMemo(() => {
+    const ids: string[] = [];
+    for (let i = events.length - 1; i >= 0 && ids.length < 4; i--) {
+      const id = events[i].player_id;
+      if (id && !ids.includes(id)) ids.push(id);
+    }
+    return ids;
+  }, [events]);
+
+  const sortedPlayers = useMemo(() => {
+    return [...players].sort((a, b) => {
+      const as = a.is_starter === false ? 1 : 0;
+      const bs = b.is_starter === false ? 1 : 0;
+      if (as !== bs) return as - bs;
+      return a.shirt_number - b.shirt_number;
+    });
+  }, [players]);
+
+  const toggleStarter = async (p: Player) => {
+    const next = !(p.is_starter !== false);
+    setPlayers((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_starter: next } : x)));
+    try {
+      await updatePlayerStarter(p.id, next);
+    } catch {
+      setPlayers((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_starter: p.is_starter } : x)));
+      setNotice("עדכון פותח/ספסל נכשל (הרץ migration_v4.sql אם חסר)");
+    }
+  };
+
   const playerLabel = (id: string | null) => {
     if (!id) return "—";
     const p = players.find((x) => x.id === id);
@@ -456,25 +488,55 @@ export default function LivePage() {
             </div>
 
             {modalPhase === "player" && (
-              <div className="grid grid-cols-4 gap-2.5">
-                {players.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => onPlayerPick(p.id)}
-                    className="btn card flex-col py-3 active:scale-95"
-                  >
-                    <span className="text-2xl font-black">{p.shirt_number}</span>
-                    <span className="mt-0.5 max-w-full truncate text-[11px] font-medium text-[var(--muted)]">
-                      {p.name}
-                    </span>
-                  </button>
-                ))}
-                <button
-                  onClick={() => onPlayerPick(null)}
-                  className="btn card col-span-4 py-3 text-sm text-[var(--muted)]"
-                >
-                  ללא שחקן
-                </button>
+              <div className="flex flex-col gap-3">
+                {recentPlayerIds.length > 0 && (
+                  <div>
+                    <p className="label mb-2">אחרונים</p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {recentPlayerIds.map((id) => {
+                        const p = players.find((x) => x.id === id);
+                        if (!p) return null;
+                        return (
+                          <button
+                            key={id}
+                            onClick={() => onPlayerPick(id)}
+                            className="btn rounded-2xl border border-[var(--accent)]/40 bg-[var(--accent)]/10 py-3 active:scale-95"
+                          >
+                            <span className="text-2xl font-black">{p.shirt_number}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div>
+                  <p className="label mb-2">הרכב (פותחים קודם)</p>
+                  <div className="grid grid-cols-4 gap-2.5">
+                    {sortedPlayers.map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => onPlayerPick(p.id)}
+                        className={`btn card flex-col py-3 active:scale-95 ${
+                          p.is_starter === false ? "opacity-70" : ""
+                        }`}
+                      >
+                        <span className="text-2xl font-black">{p.shirt_number}</span>
+                        <span className="mt-0.5 max-w-full truncate text-[11px] font-medium text-[var(--muted)]">
+                          {p.name}
+                        </span>
+                        {p.is_starter === false && (
+                          <span className="text-[9px] text-[var(--muted-2)]">ספסל</span>
+                        )}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => onPlayerPick(null)}
+                      className="btn card col-span-4 py-3 text-sm text-[var(--muted)]"
+                    >
+                      ללא שחקן
+                    </button>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -552,11 +614,27 @@ export default function LivePage() {
             </div>
 
             {/* שחקנים במשחק */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              {players.map((p) => (
-                <span key={p.id} className="chip text-[var(--text)]">
-                  <b className="tabular">#{p.shirt_number}</b> {p.name}
-                </span>
+            <div className="mb-4 flex flex-col gap-2">
+              {sortedPlayers.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2"
+                >
+                  <span className="text-sm">
+                    <b className="tabular">#{p.shirt_number}</b> {p.name}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleStarter(p)}
+                    className={`rounded-lg px-2.5 py-1 text-[10px] font-black ${
+                      p.is_starter !== false
+                        ? "bg-[var(--accent)]/20 text-[var(--accent)]"
+                        : "bg-[var(--panel-strong)] text-[var(--muted)]"
+                    }`}
+                  >
+                    {p.is_starter !== false ? "XI" : "ספסל"}
+                  </button>
+                </div>
               ))}
             </div>
 

@@ -34,6 +34,7 @@ export interface Match {
   status: MatchStatus;
   ended_at: string | null;
   created_at: string;
+  notes?: string;
 }
 
 // שחקן במשחק ספציפי (snapshot מהסגל)
@@ -44,6 +45,7 @@ export interface Player {
   shirt_number: number;
   name: string;
   position: string | null;
+  is_starter?: boolean;
 }
 
 export interface MatchEvent {

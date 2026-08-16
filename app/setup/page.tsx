@@ -11,6 +11,7 @@ import { ConfigBanner } from "../components/ConfigBanner";
 
 interface Selection {
   selected: boolean;
+  starter: boolean;
   number: string; // מספר לאותו משחק (ניתן לעקיפה)
 }
 
@@ -41,6 +42,7 @@ export default function SetupPage() {
         all.forEach((p) => {
           initial[p.id] = {
             selected: p.active !== false,
+            starter: true,
             number: String(p.shirt_number),
           };
         });
@@ -51,9 +53,13 @@ export default function SetupPage() {
   }, []);
 
   const selectedCount = Object.values(sel).filter((s) => s.selected).length;
+  const starterCount = Object.values(sel).filter((s) => s.selected && s.starter).length;
 
   const toggle = (id: string) =>
     setSel((prev) => ({ ...prev, [id]: { ...prev[id], selected: !prev[id].selected } }));
+
+  const toggleStarter = (id: string) =>
+    setSel((prev) => ({ ...prev, [id]: { ...prev[id], starter: !prev[id].starter } }));
 
   const setNumber = (id: string, number: string) =>
     setSel((prev) => ({ ...prev, [id]: { ...prev[id], number } }));
@@ -76,6 +82,7 @@ export default function SetupPage() {
         shirt_number: parseInt(sel[p.id].number, 10) || p.shirt_number,
         name: p.name,
         position: p.position,
+        is_starter: sel[p.id].starter !== false,
       }));
 
     if (chosen.length === 0) return setError("בחר לפחות שחקן אחד למשחק");
@@ -135,7 +142,10 @@ export default function SetupPage() {
 
       <div className="mb-2 flex items-center justify-between">
         <span className="label">
-          הרכב למשחק <span className="text-[var(--accent)]">({selectedCount})</span>
+          הרכב למשחק{" "}
+          <span className="text-[var(--accent)]">
+            ({selectedCount} · {starterCount} פותחים)
+          </span>
         </span>
         <div className="flex gap-2 text-xs">
           <button onClick={() => setAll(true)} className="btn btn-ghost h-8 px-3">
@@ -146,6 +156,9 @@ export default function SetupPage() {
           </button>
         </div>
       </div>
+      <p className="mb-2 text-[11px] text-[var(--muted-2)]">
+        סמן ✓ להרכב, ו־XI לספסל/פותח — בלייב יופיעו קודם הפותחים.
+      </p>
 
       {loading && <p className="text-[var(--muted)]">טוען סגל...</p>}
 
@@ -203,6 +216,19 @@ export default function SetupPage() {
                   {p.active === false ? "לא פעיל בסגל" : "בסגל"}
                 </p>
               </div>
+              {on && (
+                <button
+                  type="button"
+                  onClick={() => toggleStarter(p.id)}
+                  className={`shrink-0 rounded-lg px-2 py-1 text-[10px] font-black ${
+                    s?.starter
+                      ? "bg-[var(--accent)]/20 text-[var(--accent)]"
+                      : "bg-[var(--panel-strong)] text-[var(--muted)]"
+                  }`}
+                >
+                  {s?.starter ? "XI" : "ספסל"}
+                </button>
+              )}
             </li>
           );
         })}
