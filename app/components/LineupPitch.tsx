@@ -21,14 +21,13 @@ export function LineupPitch({
   disabled = false,
 }: Props) {
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-white/20 shadow-[0_16px_40px_-18px_rgba(8,24,90,0.85)]">
+    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-white/15 bg-gradient-to-b from-[#0a1433] via-[#07102c] to-[#050918] shadow-[0_16px_40px_-18px_rgba(8,24,90,0.85)]">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/hapoel-oranit.png"
         alt=""
-        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover object-center"
+        className="pointer-events-none absolute left-1/2 top-[46%] w-[88%] max-w-none -translate-x-1/2 -translate-y-1/2 object-contain opacity-[0.16]"
       />
-      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(6,16,58,0.42)_0%,rgba(6,16,58,0.28)_45%,rgba(6,16,58,0.55)_100%)]" />
 
       <div className="pointer-events-none absolute inset-[5.5%] rounded-lg border border-white/35" />
       <div className="pointer-events-none absolute left-1/2 top-[5.5%] h-[17%] w-[42%] -translate-x-1/2 rounded-b-md border border-white/30" />
