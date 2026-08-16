@@ -17,7 +17,7 @@ PWA (Progressive Web App) ב-Next.js לאיסוף אירועים חי בטלפו
 ### 1. פרויקט Supabase
 1. היכנס ל-[supabase.com](https://supabase.com) וצור פרויקט חדש (חינם).
 2. פתח **SQL Editor → New query**, הדבק את התוכן של [`db/schema.sql`](db/schema.sql) והרץ (Run).
-   - אם כבר יש לך DB ישן: הרץ לפי הסדר את `db/migration_v2.sql` … עד `db/migration_v4.sql` (הערות משחק + פותח/ספסל).
+   - אם כבר יש לך DB ישן: הרץ לפי הסדר את `db/migration_v2.sql` … עד `db/migration_v5.sql` (דקות משחק + חילופים).
 3. פתח **Project Settings → API** והעתק את `Project URL` ואת `anon public key`.
 
 ### 2. משתני סביבה

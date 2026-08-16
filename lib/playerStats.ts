@@ -1,5 +1,6 @@
-import { MatchEvent, Player, Zone } from "./types";
+import { Match, MatchEvent, Player, Substitution, Zone } from "./types";
 import { scoreForEvent } from "./impactScore";
+import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
 
 function emptyZones(): Record<Zone, number> {
   return { def: 0, mid: 0, att: 0 };
@@ -23,6 +24,9 @@ export interface PlayerMatchStats {
   shotsTotal: number;
   actionsTotal: number;
   score: number;
+  minutesPlayed: number;
+  minutesLabel: string;
+  isStarter: boolean;
 }
 
 function emptyRow(player: Player | null, playerId: string | null): PlayerMatchStats {
@@ -46,13 +50,21 @@ function emptyRow(player: Player | null, playerId: string | null): PlayerMatchSt
     shotsTotal: 0,
     actionsTotal: 0,
     score: 0,
+    minutesPlayed: 0,
+    minutesLabel: "",
+    isStarter: player?.is_starter === true,
   };
 }
 
 /** טבלת נתונים מקיפה לכל שחקן בהרכב + שחקנים שאירועים שויכו אליהם */
 export function computePlayerMatchStats(
   events: MatchEvent[],
-  players: Player[]
+  players: Player[],
+  options?: {
+    substitutions?: Substitution[];
+    match?: Match | null;
+    liveFinalMinute?: number;
+  }
 ): PlayerMatchStats[] {
   const byId = new Map(players.map((p) => [p.id, p]));
   const map = new Map<string, PlayerMatchStats>();
@@ -93,8 +105,23 @@ export function computePlayerMatchStats(
     }
   }
 
+  const subs = options?.substitutions ?? [];
+  const eventsMax = Math.max(0, ...events.map((e) => e.match_minute));
+  const finalMinute =
+    options?.liveFinalMinute ??
+    resolveFinalMinute(options?.match ?? null, subs, eventsMax);
+  const minutesMap = computePlayingMinutes(players, subs, finalMinute);
+
+  for (const [id, mins] of minutesMap) {
+    const row = map.get(id);
+    if (!row) continue;
+    row.minutesPlayed = mins.minutesPlayed;
+    row.minutesLabel = mins.label;
+    row.isStarter = mins.started;
+  }
+
   return Array.from(map.values()).sort((a, b) => {
-    // קודם מי שכבש / בישל, אחר כך לפי מספר
+    if (b.minutesPlayed !== a.minutesPlayed) return b.minutesPlayed - a.minutesPlayed;
     if (b.goals !== a.goals) return b.goals - a.goals;
     if (b.assists !== a.assists) return b.assists - a.assists;
     const an = a.shirtNumber ?? 999;

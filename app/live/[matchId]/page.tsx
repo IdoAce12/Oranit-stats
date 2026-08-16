@@ -10,9 +10,12 @@ import {
   getEvents,
   getMatch,
   getPlayers,
+  getSubstitutions,
   listSquad,
-  updatePlayerStarter,
+  recordSubstitution,
 } from "@/lib/db";
+import { clockDisplay, readClockState } from "@/lib/matchClock";
+import { MAX_STARTERS } from "@/lib/playingMinutes";
 import {
   deleteRemote,
   enqueue,
@@ -36,6 +39,7 @@ import {
   SHOT_LABELS,
   ShotLocation,
   SquadPlayer,
+  Substitution,
   TEAM_ACTIONS,
   Zone,
   ZONE_LABELS,
@@ -57,6 +61,8 @@ const ACTION_BTN: Record<ActionType, string> = {
   corner_against: "border border-red-400/40 bg-red-500/10 text-red-300",
 };
 
+type SubPhase = "out" | "in" | null;
+
 export default function LivePage() {
   const params = useParams<{ matchId: string }>();
   const router = useRouter();
@@ -66,6 +72,7 @@ export default function LivePage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [events, setEvents] = useState<LiveEvent[]>([]);
+  const [subs, setSubs] = useState<Substitution[]>([]);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -78,6 +85,10 @@ export default function LivePage() {
   const [newName, setNewName] = useState("");
   const [alsoSquad, setAlsoSquad] = useState(true);
   const [rosterBusy, setRosterBusy] = useState(false);
+
+  const [subPhase, setSubPhase] = useState<SubPhase>(null);
+  const [subOutId, setSubOutId] = useState<string | null>(null);
+  const [subBusy, setSubBusy] = useState(false);
 
   const clockRef = useRef<{ half: Half; minute: number }>({ half: 1, minute: 0 });
 
@@ -119,11 +130,12 @@ export default function LivePage() {
     }
     (async () => {
       try {
-        const [m, ps, evs, sq] = await Promise.all([
+        const [m, ps, evs, sq, subList] = await Promise.all([
           getMatch(matchId),
           getPlayers(matchId),
           getEvents(matchId),
           listSquad(),
+          getSubstitutions(matchId).catch(() => [] as Substitution[]),
         ]);
         if (m?.status === "finished") {
           router.replace(`/report/${matchId}`);
@@ -132,6 +144,7 @@ export default function LivePage() {
         setMatch(m);
         setPlayers(ps);
         setSquad(sq);
+        setSubs(subList);
         const pendingForMatch = getPending().filter((e) => e.match_id === matchId);
         const synced: LiveEvent[] = evs.map((e) => ({ ...e, synced: true }));
         const seen = new Set(synced.map((e) => e.id));
@@ -212,8 +225,9 @@ export default function LivePage() {
 
   const endMatch = async () => {
     await trySync();
+    const clock = clockDisplay(readClockState(matchId));
     try {
-      await finishMatch(matchId);
+      await finishMatch(matchId, { half: clock.half, minute: clock.minute });
     } catch {
       /* גם אם הסימון נכשל, ננווט לדוח */
     }
@@ -228,6 +242,17 @@ export default function LivePage() {
     [squad, players]
   );
 
+  const pitchPlayers = useMemo(() => {
+    const hasFlag = players.some((p) => p.on_pitch === true || p.on_pitch === false);
+    if (!hasFlag) return players.filter((p) => p.is_starter !== false);
+    return players.filter((p) => p.on_pitch === true);
+  }, [players]);
+
+  const benchPlayers = useMemo(() => {
+    const pitchIds = new Set(pitchPlayers.map((p) => p.id));
+    return players.filter((p) => !pitchIds.has(p.id));
+  }, [players, pitchPlayers]);
+
   const parseShirt = (raw: string): number | null => {
     const digits = raw.replace(/[^\d]/g, "");
     if (!digits) return null;
@@ -241,7 +266,14 @@ export default function LivePage() {
     setNotice(null);
     try {
       const [added] = await addPlayers(matchId, [
-        { squad_player_id: s.id, shirt_number: s.shirt_number, name: s.name, position: s.position },
+        {
+          squad_player_id: s.id,
+          shirt_number: s.shirt_number,
+          name: s.name,
+          position: s.position,
+          is_starter: false,
+          on_pitch: false,
+        },
       ]);
       if (added) setPlayers((prev) => [...prev, added].sort((a, b) => a.shirt_number - b.shirt_number));
     } catch {
@@ -265,7 +297,13 @@ export default function LivePage() {
         setSquad((prev) => [...prev, s].sort((a, b) => a.shirt_number - b.shirt_number));
       }
       const [added] = await addPlayers(matchId, [
-        { squad_player_id: squadId, shirt_number: num, name: newName.trim() },
+        {
+          squad_player_id: squadId,
+          shirt_number: num,
+          name: newName.trim(),
+          is_starter: false,
+          on_pitch: false,
+        },
       ]);
       if (added) setPlayers((prev) => [...prev, added].sort((a, b) => a.shirt_number - b.shirt_number));
       setNewNum("");
@@ -274,6 +312,45 @@ export default function LivePage() {
       setNotice("הוספת שחקן נכשלה");
     } finally {
       setRosterBusy(false);
+    }
+  };
+
+  const openSub = () => {
+    setSubPhase("out");
+    setSubOutId(null);
+    setNotice(null);
+  };
+
+  const closeSub = () => {
+    setSubPhase(null);
+    setSubOutId(null);
+  };
+
+  const confirmSub = async (inId: string) => {
+    if (!subOutId) return;
+    setSubBusy(true);
+    try {
+      const sub = await recordSubstitution({
+        match_id: matchId,
+        player_out_id: subOutId,
+        player_in_id: inId,
+        half: clockRef.current.half,
+        match_minute: clockRef.current.minute,
+      });
+      setSubs((prev) => [...prev, sub]);
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (p.id === subOutId) return { ...p, on_pitch: false };
+          if (p.id === inId) return { ...p, on_pitch: true };
+          return p;
+        })
+      );
+      tapFeedback();
+      closeSub();
+    } catch {
+      setNotice("חילוף נכשל — הרץ migration_v5.sql ב-Supabase");
+    } finally {
+      setSubBusy(false);
     }
   };
 
@@ -298,24 +375,14 @@ export default function LivePage() {
   }, [events]);
 
   const sortedPlayers = useMemo(() => {
+    const pitchIds = new Set(pitchPlayers.map((p) => p.id));
     return [...players].sort((a, b) => {
-      const as = a.is_starter === false ? 1 : 0;
-      const bs = b.is_starter === false ? 1 : 0;
-      if (as !== bs) return as - bs;
+      const ap = pitchIds.has(a.id) ? 0 : 1;
+      const bp = pitchIds.has(b.id) ? 0 : 1;
+      if (ap !== bp) return ap - bp;
       return a.shirt_number - b.shirt_number;
     });
-  }, [players]);
-
-  const toggleStarter = async (p: Player) => {
-    const next = !(p.is_starter !== false);
-    setPlayers((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_starter: next } : x)));
-    try {
-      await updatePlayerStarter(p.id, next);
-    } catch {
-      setPlayers((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_starter: p.is_starter } : x)));
-      setNotice("עדכון פותח/ספסל נכשל (הרץ migration_v4.sql אם חסר)");
-    }
-  };
+  }, [players, pitchPlayers]);
 
   const playerLabel = (id: string | null) => {
     if (!id) return "—";
@@ -426,9 +493,20 @@ export default function LivePage() {
         ))}
       </div>
 
-      <button onClick={() => setRosterOpen(true)} className="btn btn-ghost mt-3 w-full py-2.5 text-sm">
-        נהל הרכב · {players.length} שחקנים
-      </button>
+      <div className="mt-2.5 grid grid-cols-2 gap-2.5">
+        <button onClick={openSub} className="btn btn-ghost rounded-2xl py-4 text-base font-extrabold">
+          ⟳ חילוף
+        </button>
+        <button onClick={() => setRosterOpen(true)} className="btn btn-ghost rounded-2xl py-4 text-base">
+          הרכב · {pitchPlayers.length} על המגרש
+        </button>
+      </div>
+
+      {subs.length > 0 && (
+        <p className="mt-2 text-center text-[11px] text-[var(--muted-2)]">
+          {subs.length} חילופים במשחק
+        </p>
+      )}
 
       <div className="mt-4 flex items-center justify-between">
         <h2 className="label">אירועים אחרונים</h2>
@@ -510,25 +588,27 @@ export default function LivePage() {
                   </div>
                 )}
                 <div>
-                  <p className="label mb-2">הרכב (פותחים קודם)</p>
+                  <p className="label mb-2">על המגרש קודם</p>
                   <div className="grid grid-cols-4 gap-2.5">
-                    {sortedPlayers.map((p) => (
+                    {sortedPlayers.map((p) => {
+                      const onField = pitchPlayers.some((x) => x.id === p.id);
+                      return (
                       <button
                         key={p.id}
                         onClick={() => onPlayerPick(p.id)}
                         className={`btn card flex-col py-3 active:scale-95 ${
-                          p.is_starter === false ? "opacity-70" : ""
+                          onField ? "" : "opacity-55"
                         }`}
                       >
                         <span className="text-2xl font-black">{p.shirt_number}</span>
                         <span className="mt-0.5 max-w-full truncate text-[11px] font-medium text-[var(--muted)]">
                           {p.name}
                         </span>
-                        {p.is_starter === false && (
-                          <span className="text-[9px] text-[var(--muted-2)]">ספסל</span>
-                        )}
+                        <span className="text-[9px] text-[var(--muted-2)]">
+                          {onField ? "מגרש" : "ספסל"}
+                        </span>
                       </button>
-                    ))}
+                    );})}
                     <button
                       onClick={() => onPlayerPick(null)}
                       className="btn card col-span-4 py-3 text-sm text-[var(--muted)]"
@@ -579,6 +659,76 @@ export default function LivePage() {
         </div>
       )}
 
+      {/* חילוף */}
+      {subPhase && (
+        <div className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm" onClick={closeSub}>
+          <div
+            className="sheet max-h-[85vh] w-full overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[#0c1322] p-4 pb-8"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-lg font-extrabold">
+                {subPhase === "out" ? "מי יוצא?" : "מי נכנס מהספסל?"}
+              </span>
+              <button onClick={closeSub} className="btn btn-ghost h-8 px-3 text-sm">
+                בטל
+              </button>
+            </div>
+            <p className="mb-3 text-xs text-[var(--muted)]">
+              דקה נוכחית: <b className="tabular text-[var(--text)]">{clockRef.current.minute}׳</b>
+              {subOutId && (
+                <>
+                  {" · "}יוצא:{" "}
+                  <b>
+                    #{players.find((p) => p.id === subOutId)?.shirt_number}{" "}
+                    {players.find((p) => p.id === subOutId)?.name}
+                  </b>
+                </>
+              )}
+            </p>
+            {subPhase === "out" && (
+              <div className="grid grid-cols-4 gap-2.5">
+                {pitchPlayers.map((p) => (
+                  <button
+                    key={p.id}
+                    disabled={subBusy}
+                    onClick={() => {
+                      setSubOutId(p.id);
+                      setSubPhase("in");
+                    }}
+                    className="btn card flex-col py-3 active:scale-95"
+                  >
+                    <span className="text-2xl font-black">{p.shirt_number}</span>
+                    <span className="max-w-full truncate text-[11px] text-[var(--muted)]">{p.name}</span>
+                  </button>
+                ))}
+                {pitchPlayers.length === 0 && (
+                  <p className="col-span-4 text-center text-sm text-[var(--muted)]">אין שחקנים על המגרש</p>
+                )}
+              </div>
+            )}
+            {subPhase === "in" && (
+              <div className="grid grid-cols-4 gap-2.5">
+                {benchPlayers.map((p) => (
+                  <button
+                    key={p.id}
+                    disabled={subBusy}
+                    onClick={() => confirmSub(p.id)}
+                    className="btn card flex-col border border-[var(--accent)]/30 py-3 active:scale-95"
+                  >
+                    <span className="text-2xl font-black">{p.shirt_number}</span>
+                    <span className="max-w-full truncate text-[11px] text-[var(--muted)]">{p.name}</span>
+                  </button>
+                ))}
+                {benchPlayers.length === 0 && (
+                  <p className="col-span-4 text-center text-sm text-[var(--muted)]">אין שחקנים בספסל</p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* אישור סיום משחק */}
       {confirmEnd && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6 backdrop-blur-sm" onClick={() => setConfirmEnd(false)}>
@@ -614,28 +764,37 @@ export default function LivePage() {
             </div>
 
             {/* שחקנים במשחק */}
-            <div className="mb-4 flex flex-col gap-2">
-              {sortedPlayers.map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2"
-                >
-                  <span className="text-sm">
-                    <b className="tabular">#{p.shirt_number}</b> {p.name}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => toggleStarter(p)}
-                    className={`rounded-lg px-2.5 py-1 text-[10px] font-black ${
-                      p.is_starter !== false
-                        ? "bg-[var(--accent)]/20 text-[var(--accent)]"
-                        : "bg-[var(--panel-strong)] text-[var(--muted)]"
-                    }`}
+            <div className="mb-4">
+              <p className="label mb-2">על המגרש ({pitchPlayers.length}/{MAX_STARTERS})</p>
+              <div className="mb-3 flex flex-col gap-2">
+                {pitchPlayers.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between rounded-xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2"
                   >
-                    {p.is_starter !== false ? "XI" : "ספסל"}
-                  </button>
-                </div>
-              ))}
+                    <span className="text-sm">
+                      <b className="tabular">#{p.shirt_number}</b> {p.name}
+                    </span>
+                    <span className="text-[10px] font-black text-[var(--accent)]">
+                      {p.is_starter ? "פותח" : "נכנס"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="label mb-2">ספסל ({benchPlayers.length})</p>
+              <div className="flex flex-col gap-2">
+                {benchPlayers.map((p) => (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--panel)] px-3 py-2"
+                  >
+                    <span className="text-sm text-[var(--muted)]">
+                      <b className="tabular">#{p.shirt_number}</b> {p.name}
+                    </span>
+                    <span className="text-[10px] font-bold text-[var(--muted-2)]">ספסל</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* הוספה מהסגל */}

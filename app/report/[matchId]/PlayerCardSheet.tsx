@@ -38,7 +38,7 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
               {stats.name}
             </h2>
             <p className="mt-1 text-xs text-[var(--muted-2)]">
-              {stats.actionsTotal} פעולות במשחק זה
+              {stats.minutesLabel || `${stats.minutesPlayed}׳`} · {stats.actionsTotal} פעולות
             </p>
           </div>
           <button onClick={onClose} className="btn btn-ghost h-9 shrink-0 px-3 text-sm">
@@ -46,8 +46,8 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
           </button>
         </div>
 
-        {/* שערים / בישולים */}
-        <div className="mb-3 grid grid-cols-2 gap-2">
+        <div className="mb-3 grid grid-cols-3 gap-2">
+          <BigStat value={stats.minutesPlayed} label="דקות" tone="accent" />
           <BigStat value={stats.goals} label="שערים" tone="violet" />
           <BigStat value={stats.assists} label="בישולים" tone="cyan" />
         </div>

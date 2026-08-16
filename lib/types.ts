@@ -35,6 +35,8 @@ export interface Match {
   ended_at: string | null;
   created_at: string;
   notes?: string;
+  final_half?: number | null;
+  final_minute?: number | null;
 }
 
 // שחקן במשחק ספציפי (snapshot מהסגל)
@@ -46,6 +48,18 @@ export interface Player {
   name: string;
   position: string | null;
   is_starter?: boolean;
+  /** על המגרש כרגע (מתעדכן בחילוף) */
+  on_pitch?: boolean;
+}
+
+export interface Substitution {
+  id: string;
+  match_id: string;
+  player_out_id: string;
+  player_in_id: string;
+  half: Half;
+  match_minute: number;
+  created_at: string;
 }
 
 export interface MatchEvent {

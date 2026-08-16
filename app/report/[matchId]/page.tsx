@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { getEvents, getMatch, getPlayers, reopenMatch, updateMatchNotes } from "@/lib/db";
+import { getEvents, getMatch, getPlayers, getSubstitutions, reopenMatch, updateMatchNotes } from "@/lib/db";
 import {
   downloadCsv,
   exportTableCsv,
@@ -13,8 +13,9 @@ import {
 } from "@/lib/exportCsv";
 import { computePlayerMatchStats, computeTeamTotals, PlayerMatchStats } from "@/lib/playerStats";
 import { buildMatchSummary, zoneHeatPercent } from "@/lib/matchSummary";
+import { clockDisplay, readClockState } from "@/lib/matchClock";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { MatchEvent, Match, Player, ZONE_LABELS } from "@/lib/types";
+import { MatchEvent, Match, Player, Substitution, ZONE_LABELS } from "@/lib/types";
 import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 import { PlayerCardSheet } from "./PlayerCardSheet";
@@ -27,6 +28,7 @@ export default function ReportPage() {
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [events, setEvents] = useState<MatchEvent[]>([]);
+  const [subs, setSubs] = useState<Substitution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reopening, setReopening] = useState(false);
@@ -43,14 +45,16 @@ export default function ReportPage() {
     }
     (async () => {
       try {
-        const [m, ps, evs] = await Promise.all([
+        const [m, ps, evs, subList] = await Promise.all([
           getMatch(matchId),
           getPlayers(matchId),
           getEvents(matchId),
+          getSubstitutions(matchId).catch(() => [] as Substitution[]),
         ]);
         setMatch(m);
         setPlayers(ps);
         setEvents(evs);
+        setSubs(subList);
         setNotes(m?.notes ?? "");
       } catch (e) {
         setError(e instanceof Error ? e.message : "שגיאה בטעינה");
@@ -60,7 +64,25 @@ export default function ReportPage() {
     })();
   }, [matchId]);
 
-  const playerStats = useMemo(() => computePlayerMatchStats(events, players), [events, players]);
+  const liveFinalMinute = useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    if (match?.status !== "live") return undefined;
+    return clockDisplay(readClockState(matchId)).minute;
+  }, [match?.status, matchId, events.length, subs.length]);
+
+  const statsOpts = useMemo(
+    () => ({
+      substitutions: subs,
+      match,
+      liveFinalMinute,
+    }),
+    [subs, match, liveFinalMinute]
+  );
+
+  const playerStats = useMemo(
+    () => computePlayerMatchStats(events, players, statsOpts),
+    [events, players, statsOpts]
+  );
   const team = useMemo(() => computeTeamTotals(events), [events]);
   const summary = useMemo(() => buildMatchSummary(events, players), [events, players]);
   const lossHeat = useMemo(() => zoneHeatPercent(team.losses), [team.losses]);
@@ -86,7 +108,10 @@ export default function ReportPage() {
   };
 
   const exportOne = (id: ExportTableId) => {
-    const csv = id === "full" ? matchReportToCsv(events, players, meta) : exportTableCsv(id, events, players, meta);
+    const csv =
+      id === "full"
+        ? matchReportToCsv(events, players, meta, statsOpts)
+        : exportTableCsv(id, events, players, meta, statsOpts);
     const label = id === "full" ? "full" : id;
     downloadCsv(`scout_${match?.opponent ?? "match"}_${label}.csv`, csv);
   };
@@ -261,10 +286,56 @@ export default function ReportPage() {
                     <span className="mt-0.5 max-w-full truncate px-1 text-[11px] text-[var(--muted)]">
                       {p.name}
                     </span>
+                    <span className="mt-1 text-[10px] font-bold tabular text-[var(--accent)]">
+                      {p.minutesPlayed}׳
+                    </span>
                   </button>
                 ))}
             </div>
           </section>
+
+          <MetricTable
+            title="דקות משחק"
+            exportId="minutes"
+            onExport={exportOne}
+            headers={["דקות", "סטטוס"]}
+            rows={playerStats}
+            sortKey={(r) => r.minutesPlayed}
+            cells={(r) => [r.minutesPlayed]}
+            cellLabels={(r) => [String(r.minutesPlayed), r.isStarter ? "פותח" : "ספסל"]}
+            onPlayer={setCardPlayerId}
+            accentCol={0}
+            showMinutes={false}
+          />
+
+          {subs.length > 0 && (
+            <section className="mb-4">
+              <h2 className="label mb-2">חילופים ({subs.length})</h2>
+              <ul className="flex flex-col gap-1.5">
+                {subs.map((s) => {
+                  const outP = players.find((p) => p.id === s.player_out_id);
+                  const inP = players.find((p) => p.id === s.player_in_id);
+                  return (
+                    <li
+                      key={s.id}
+                      className="card flex items-center justify-between px-3 py-2 text-sm"
+                    >
+                      <span className="tabular font-bold text-[var(--muted)]">{s.match_minute}׳</span>
+                      <span>
+                        <span className="text-[var(--danger)]">
+                          ↓ #{outP?.shirt_number} {outP?.name}
+                        </span>
+                        {" · "}
+                        <span className="text-[var(--accent)]">
+                          ↑ #{inP?.shirt_number} {inP?.name}
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
 
           <MetricTable
             title="שערים"
@@ -408,11 +479,13 @@ function MetricTable({
   rows,
   sortKey,
   cells,
+  cellLabels,
   onPlayer,
   dangerCol,
   accentCol,
   infoCol,
   boldLast,
+  showMinutes = true,
 }: {
   title: string;
   exportId: ExportTableId;
@@ -421,11 +494,13 @@ function MetricTable({
   rows: PlayerMatchStats[];
   sortKey: (r: PlayerMatchStats) => number;
   cells: (r: PlayerMatchStats) => number[];
+  cellLabels?: (r: PlayerMatchStats) => (string | number)[];
   onPlayer: (id: string | null) => void;
   dangerCol?: number;
   accentCol?: number;
   infoCol?: number;
   boldLast?: boolean;
+  showMinutes?: boolean;
 }) {
   const sorted = [...rows]
     .filter((r) => r.playerId !== null)
@@ -454,35 +529,44 @@ function MetricTable({
             </thead>
             <tbody>
               {sorted.map((row) => {
-                const vals = cells(row);
+                const vals = cellLabels ? cellLabels(row) : cells(row);
                 return (
                   <tr key={row.playerId!} className="border-b border-[var(--border)]/50 odd:bg-white/[0.02]">
                     <td className="px-3 py-2.5 text-right">
-                      <button onClick={() => onPlayer(row.playerId)} className="font-bold">
+                      <button onClick={() => onPlayer(row.playerId)} className="text-right font-bold">
                         <span className="tabular text-[var(--muted)]">#{row.shirtNumber}</span>{" "}
                         <span className="underline decoration-[var(--border-strong)] underline-offset-2">
                           {row.name}
                         </span>
+                        {showMinutes && (
+                          <span className="mt-0.5 block text-[10px] font-semibold text-[var(--muted-2)]">
+                            {row.minutesLabel || `${row.minutesPlayed}׳`}
+                          </span>
+                        )}
                       </button>
                     </td>
                     {vals.map((v, i) => {
                       const isLast = boldLast && i === vals.length - 1;
+                      const num = typeof v === "number" ? v : Number(v);
                       const color =
-                        v === 0
-                          ? "text-[var(--muted-2)]"
-                          : i === dangerCol
-                            ? "text-[var(--danger)]"
-                            : i === accentCol
-                              ? "text-[var(--accent)]"
-                              : i === infoCol
-                                ? "text-[var(--info)]"
-                                : "";
+                        typeof v !== "number"
+                          ? "text-[var(--muted)]"
+                          : v === 0
+                            ? "text-[var(--muted-2)]"
+                            : i === dangerCol
+                              ? "text-[var(--danger)]"
+                              : i === accentCol
+                                ? "text-[var(--accent)]"
+                                : i === infoCol
+                                  ? "text-[var(--info)]"
+                                  : "";
                       return (
                         <td
                           key={i}
                           className={`tabular px-2 py-2.5 ${isLast ? "font-black" : "font-semibold"} ${color}`}
                         >
                           {v}
+                          {typeof v === "number" && title === "דקות משחק" && i === 0 ? "׳" : ""}
                         </td>
                       );
                     })}

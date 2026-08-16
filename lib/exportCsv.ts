@@ -1,7 +1,13 @@
-import { ACTION_LABELS, MatchEvent, Player, SHOT_LABELS, ZONE_LABELS } from "./types";
+import { ACTION_LABELS, Match, MatchEvent, Player, SHOT_LABELS, Substitution, ZONE_LABELS } from "./types";
 import { computePlayerMatchStats, computeTeamTotals, PlayerMatchStats } from "./playerStats";
 import { buildMatchSummary } from "./matchSummary";
 import { SeasonImpact } from "./impactScore";
+
+export type StatsOptions = {
+  substitutions?: Substitution[];
+  match?: Match | null;
+  liveFinalMinute?: number;
+};
 
 function csvEscape(value: string | number | null | undefined): string {
   const s = value === null || value === undefined ? "" : String(value);
@@ -20,6 +26,7 @@ function playerRef(row: PlayerMatchStats): (string | number | null)[] {
 }
 
 export type ExportTableId =
+  | "minutes"
   | "goals"
   | "assists"
   | "losses"
@@ -31,41 +38,65 @@ export type ExportTableId =
   | "events"
   | "season";
 
+function tableMinutes(stats: PlayerMatchStats[]): string[] {
+  const lines = ["=== דקות משחק ===", joinRow(["מס׳", "שם", "דקות", "פותח", "פירוט"])];
+  for (const row of [...stats].sort((a, b) => b.minutesPlayed - a.minutesPlayed)) {
+    if (row.playerId === null) continue;
+    lines.push(
+      joinRow([
+        ...playerRef(row),
+        row.minutesPlayed,
+        row.isStarter ? "כן" : "לא",
+        row.minutesLabel,
+      ])
+    );
+  }
+  return lines;
+}
+
 function tableGoals(stats: PlayerMatchStats[], teamGoals: number): string[] {
-  const lines = ["=== טבלת שערים ===", joinRow(["מס׳", "שם", "שערים"])];
+  const lines = ["=== טבלת שערים ===", joinRow(["מס׳", "שם", "דקות", "שערים"])];
   for (const row of [...stats].sort((a, b) => b.goals - a.goals)) {
     if (row.playerId === null && row.goals === 0) continue;
-    lines.push(joinRow([...playerRef(row), row.goals]));
+    lines.push(joinRow([...playerRef(row), row.minutesPlayed, row.goals]));
   }
-  lines.push(joinRow(["", "סה״כ", teamGoals]));
+  lines.push(joinRow(["", "סה״כ", "", teamGoals]));
   return lines;
 }
 
 function tableAssists(stats: PlayerMatchStats[], teamAssists: number): string[] {
-  const lines = ["=== טבלת בישולים ===", joinRow(["מס׳", "שם", "בישולים"])];
+  const lines = ["=== טבלת בישולים ===", joinRow(["מס׳", "שם", "דקות", "בישולים"])];
   for (const row of [...stats].sort((a, b) => b.assists - a.assists)) {
     if (row.playerId === null && row.assists === 0) continue;
-    lines.push(joinRow([...playerRef(row), row.assists]));
+    lines.push(joinRow([...playerRef(row), row.minutesPlayed, row.assists]));
   }
-  lines.push(joinRow(["", "סה״כ", teamAssists]));
+  lines.push(joinRow(["", "סה״כ", "", teamAssists]));
   return lines;
 }
 
 function tableLosses(stats: PlayerMatchStats[], team: ReturnType<typeof computeTeamTotals>): string[] {
   const lines = [
     "=== טבלת איבודי כדור ===",
-    joinRow(["מס׳", "שם", "הגנה", "אמצע", "התקפה", "סה״כ"]),
+    joinRow(["מס׳", "שם", "דקות", "הגנה", "אמצע", "התקפה", "סה״כ"]),
   ];
   for (const row of [...stats].sort((a, b) => b.lossesTotal - a.lossesTotal)) {
     if (row.playerId === null) continue;
     lines.push(
-      joinRow([...playerRef(row), row.losses.def, row.losses.mid, row.losses.att, row.lossesTotal])
+      joinRow([
+        ...playerRef(row),
+        row.minutesPlayed,
+        row.losses.def,
+        row.losses.mid,
+        row.losses.att,
+        row.lossesTotal,
+      ])
     );
   }
   lines.push(
     joinRow([
       "",
       "סה״כ",
+      "",
       team.losses.def,
       team.losses.mid,
       team.losses.att,
@@ -78,13 +109,14 @@ function tableLosses(stats: PlayerMatchStats[], team: ReturnType<typeof computeT
 function tableTackles(stats: PlayerMatchStats[], team: ReturnType<typeof computeTeamTotals>): string[] {
   const lines = [
     "=== טבלת חילוצים ===",
-    joinRow(["מס׳", "שם", "הגנה", "אמצע", "התקפה", "סה״כ"]),
+    joinRow(["מס׳", "שם", "דקות", "הגנה", "אמצע", "התקפה", "סה״כ"]),
   ];
   for (const row of [...stats].sort((a, b) => b.tacklesTotal - a.tacklesTotal)) {
     if (row.playerId === null) continue;
     lines.push(
       joinRow([
         ...playerRef(row),
+        row.minutesPlayed,
         row.tackles.def,
         row.tackles.mid,
         row.tackles.att,
@@ -96,6 +128,7 @@ function tableTackles(stats: PlayerMatchStats[], team: ReturnType<typeof compute
     joinRow([
       "",
       "סה״כ",
+      "",
       team.tackles.def,
       team.tackles.mid,
       team.tackles.att,
@@ -108,13 +141,14 @@ function tableTackles(stats: PlayerMatchStats[], team: ReturnType<typeof compute
 function tableKeyPasses(stats: PlayerMatchStats[], teamKeyPasses: number): string[] {
   const lines = [
     "=== טבלת מסירות מפתח ===",
-    joinRow(["מס׳", "שם", "הגנה", "אמצע", "התקפה", "סה״כ"]),
+    joinRow(["מס׳", "שם", "דקות", "הגנה", "אמצע", "התקפה", "סה״כ"]),
   ];
   for (const row of [...stats].sort((a, b) => b.keyPassesTotal - a.keyPassesTotal)) {
     if (row.playerId === null) continue;
     lines.push(
       joinRow([
         ...playerRef(row),
+        row.minutesPlayed,
         row.keyPasses.def,
         row.keyPasses.mid,
         row.keyPasses.att,
@@ -122,21 +156,23 @@ function tableKeyPasses(stats: PlayerMatchStats[], teamKeyPasses: number): strin
       ])
     );
   }
-  lines.push(joinRow(["", "סה״כ", "", "", "", teamKeyPasses]));
+  lines.push(joinRow(["", "סה״כ", "", "", "", "", teamKeyPasses]));
   return lines;
 }
 
 function tableShots(stats: PlayerMatchStats[], team: ReturnType<typeof computeTeamTotals>): string[] {
   const lines = [
     "=== טבלת איומים לשער ===",
-    joinRow(["מס׳", "שם", "מתוך הרחבה", "מחוץ לרחבה", "סה״כ"]),
+    joinRow(["מס׳", "שם", "דקות", "מתוך הרחבה", "מחוץ לרחבה", "סה״כ"]),
   ];
   for (const row of [...stats].sort((a, b) => b.shotsTotal - a.shotsTotal)) {
     if (row.playerId === null) continue;
-    lines.push(joinRow([...playerRef(row), row.shotsInBox, row.shotsOutBox, row.shotsTotal]));
+    lines.push(
+      joinRow([...playerRef(row), row.minutesPlayed, row.shotsInBox, row.shotsOutBox, row.shotsTotal])
+    );
   }
   lines.push(
-    joinRow(["", "סה״כ", team.shotsInBox, team.shotsOutBox, team.shotsInBox + team.shotsOutBox])
+    joinRow(["", "סה״כ", "", team.shotsInBox, team.shotsOutBox, team.shotsInBox + team.shotsOutBox])
   );
   return lines;
 }
@@ -173,10 +209,11 @@ function tableEvents(events: MatchEvent[], players: Player[]): string[] {
 export function coachSheetCsv(
   events: MatchEvent[],
   players: Player[],
-  meta?: { opponent?: string; matchDate?: string; notes?: string }
+  meta?: { opponent?: string; matchDate?: string; notes?: string },
+  opts?: StatsOptions
 ): string {
   const summary = buildMatchSummary(events, players);
-  const stats = computePlayerMatchStats(events, players).filter((p) => p.playerId !== null);
+  const stats = computePlayerMatchStats(events, players, opts).filter((p) => p.playerId !== null);
   const lines: string[] = [];
   lines.push(joinRow(["גיליון מאמן", meta?.opponent ?? "", meta?.matchDate ?? ""]));
   lines.push(joinRow(["שערים שלנו", summary.ourGoals]));
@@ -193,7 +230,7 @@ export function coachSheetCsv(
   lines.push("תובנות");
   for (const i of summary.insights) lines.push(joinRow([i.text]));
   lines.push("");
-  lines.push(joinRow(["מס׳", "שם", "שערים", "בישולים", "איבודי הגנה", "חילוצים", "מס״מ"]));
+  lines.push(joinRow(["מס׳", "שם", "דקות", "שערים", "בישולים", "איבודי הגנה", "חילוצים", "מס״מ"]));
   for (const r of [...stats].sort(
     (a, b) => b.goals - a.goals || b.assists - a.assists || b.score - a.score
   )) {
@@ -201,6 +238,7 @@ export function coachSheetCsv(
       joinRow([
         r.shirtNumber,
         r.name,
+        r.minutesPlayed,
         r.goals,
         r.assists,
         r.losses.def,
@@ -220,9 +258,10 @@ export function exportTableCsv(
   tableId: ExportTableId,
   events: MatchEvent[],
   players: Player[],
-  meta?: { opponent?: string; matchDate?: string; notes?: string }
+  meta?: { opponent?: string; matchDate?: string; notes?: string },
+  opts?: StatsOptions
 ): string {
-  const stats = computePlayerMatchStats(events, players);
+  const stats = computePlayerMatchStats(events, players, opts);
   const team = computeTeamTotals(events);
   const header: string[] = [];
   if (meta?.opponent || meta?.matchDate) {
@@ -231,6 +270,8 @@ export function exportTableCsv(
   }
 
   switch (tableId) {
+    case "minutes":
+      return [...header, ...tableMinutes(stats)].join("\n");
     case "goals":
       return [...header, ...tableGoals(stats, team.goals)].join("\n");
     case "assists":
@@ -246,19 +287,20 @@ export function exportTableCsv(
     case "events":
       return [...header, ...tableEvents(events, players)].join("\n");
     case "coach":
-      return coachSheetCsv(events, players, meta);
+      return coachSheetCsv(events, players, meta, opts);
     case "full":
     default:
-      return matchReportToCsv(events, players, meta);
+      return matchReportToCsv(events, players, meta, opts);
   }
 }
 
 export function matchReportToCsv(
   events: MatchEvent[],
   players: Player[],
-  meta?: { opponent?: string; matchDate?: string; notes?: string }
+  meta?: { opponent?: string; matchDate?: string; notes?: string },
+  opts?: StatsOptions
 ): string {
-  const stats = computePlayerMatchStats(events, players);
+  const stats = computePlayerMatchStats(events, players, opts);
   const team = computeTeamTotals(events);
   const lines: string[] = [];
 
@@ -267,6 +309,7 @@ export function matchReportToCsv(
     lines.push("");
   }
 
+  lines.push(...tableMinutes(stats), "");
   lines.push(...tableGoals(stats, team.goals), "");
   lines.push(...tableAssists(stats, team.assists), "");
   lines.push(...tableLosses(stats, team), "");
@@ -346,6 +389,7 @@ export function downloadCsv(filename: string, csv: string) {
 }
 
 export const EXPORT_TABLE_LABELS: Record<Exclude<ExportTableId, "full" | "season">, string> = {
+  minutes: "דקות משחק",
   goals: "שערים",
   assists: "בישולים",
   losses: "איבודים",
