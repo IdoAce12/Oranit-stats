@@ -21,18 +21,26 @@ export function LineupPitch({
   disabled = false,
 }: Props) {
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-emerald-400/25 bg-gradient-to-b from-emerald-800 via-emerald-900 to-[#042012] shadow-inner">
-      <div className="pointer-events-none absolute inset-[5.5%] rounded-lg border border-white/20" />
-      <div className="pointer-events-none absolute left-1/2 top-[5.5%] h-[17%] w-[42%] -translate-x-1/2 rounded-b-md border border-white/20" />
-      <div className="pointer-events-none absolute bottom-[5.5%] left-1/2 h-[17%] w-[42%] -translate-x-1/2 rounded-t-md border border-white/20" />
-      <div className="pointer-events-none absolute left-[5.5%] right-[5.5%] top-1/2 h-px bg-white/20" />
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[22%] w-[22%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/20" />
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/35" />
+    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-white/20 shadow-[0_16px_40px_-18px_rgba(8,24,90,0.85)]">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/hapoel-oranit.png"
+        alt=""
+        className="pointer-events-none absolute inset-0 h-full w-full scale-110 object-cover object-center"
+      />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(6,16,58,0.42)_0%,rgba(6,16,58,0.28)_45%,rgba(6,16,58,0.55)_100%)]" />
 
-      <span className="pointer-events-none absolute left-1/2 top-1.5 -translate-x-1/2 text-[10px] font-extrabold tracking-widest text-white/35">
+      <div className="pointer-events-none absolute inset-[5.5%] rounded-lg border border-white/35" />
+      <div className="pointer-events-none absolute left-1/2 top-[5.5%] h-[17%] w-[42%] -translate-x-1/2 rounded-b-md border border-white/30" />
+      <div className="pointer-events-none absolute bottom-[5.5%] left-1/2 h-[17%] w-[42%] -translate-x-1/2 rounded-t-md border border-white/30" />
+      <div className="pointer-events-none absolute left-[5.5%] right-[5.5%] top-1/2 h-px bg-white/30" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[22%] w-[22%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/30" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/50" />
+
+      <span className="pointer-events-none absolute left-1/2 top-1.5 -translate-x-1/2 text-[10px] font-extrabold tracking-widest text-white/55">
         התקפה
       </span>
-      <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 text-[10px] font-extrabold tracking-widest text-white/35">
+      <span className="pointer-events-none absolute bottom-1.5 left-1/2 -translate-x-1/2 text-[10px] font-extrabold tracking-widest text-white/55">
         הגנה
       </span>
 
@@ -53,19 +61,19 @@ export function LineupPitch({
             aria-label={player ? `#${player.shirt_number} ${player.name}` : node.label}
           >
             <span
-              className={`flex h-11 w-11 items-center justify-center rounded-full border-2 text-lg font-black tabular shadow-lg transition ${
+              className={`flex h-11 w-11 items-center justify-center rounded-full border-2 text-lg font-black tabular shadow-[0_6px_16px_rgba(0,0,0,0.45)] transition ${
                 lit
                   ? "scale-110 border-amber-300 bg-amber-400 text-[#241a00] shadow-[0_0_18px_rgba(251,191,36,0.65)]"
                   : player
-                    ? "border-white/80 bg-[#04150e] text-white"
-                    : "border-dashed border-white/35 bg-black/25 text-white/50"
+                    ? "border-white bg-[#0a246b] text-white"
+                    : "border-dashed border-white/55 bg-[#0a246b]/55 text-white/70"
               }`}
             >
               {player ? player.shirt_number : "·"}
             </span>
             <span
-              className={`max-w-full truncate text-[10px] font-bold leading-tight ${
-                player ? "text-white" : "text-white/45"
+              className={`max-w-full truncate rounded-md px-1 text-[10px] font-bold leading-tight ${
+                player ? "bg-[#06123a]/70 text-white" : "text-white/70"
               }`}
             >
               {player ? player.name : showSlotLabels ? node.label : ""}

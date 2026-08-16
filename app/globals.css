@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #080c17;
+  --bg: #070d24;
   --panel: rgba(255, 255, 255, 0.045);
   --panel-strong: rgba(255, 255, 255, 0.08);
   --border: rgba(255, 255, 255, 0.09);
@@ -42,9 +42,20 @@ button {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(60% 45% at 85% -5%, rgba(52, 211, 153, 0.14), transparent 60%),
-    radial-gradient(55% 40% at 0% 0%, rgba(96, 165, 250, 0.1), transparent 55%),
-    linear-gradient(180deg, #0a0f1c 0%, #080c17 55%, #070a12 100%);
+    radial-gradient(60% 45% at 85% -5%, rgba(37, 99, 235, 0.22), transparent 60%),
+    radial-gradient(55% 40% at 0% 0%, rgba(30, 64, 175, 0.18), transparent 55%),
+    linear-gradient(180deg, #0a1433 0%, #070d24 55%, #050918 100%);
+}
+
+.home-crest-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: url("/hapoel-oranit.png") center 8% / min(420px, 88vw) no-repeat;
+  opacity: 0.16;
+  mask-image: linear-gradient(180deg, black 0%, black 38%, transparent 72%);
+  -webkit-mask-image: linear-gradient(180deg, black 0%, black 38%, transparent 72%);
 }
 
 /* ---------- רכיבים משותפים ---------- */

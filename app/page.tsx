@@ -24,18 +24,21 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-5 pb-10">
-      <div className="mb-5 overflow-hidden rounded-[2rem] border border-white/10 shadow-[0_24px_50px_-24px_rgba(15,50,140,0.9)]">
+    <main className="relative mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-10">
+      <div className="home-crest-bg" aria-hidden />
+      <div className="relative z-10 flex flex-1 flex-col">
+      <div className="mb-6 flex items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/hapoel-oranit.png"
           alt="הפועל אורנית"
-          className="block w-full"
+          className="h-12 w-12 rounded-full object-cover ring-2 ring-white/25"
         />
+        <div>
+          <h1 className="text-xl font-extrabold leading-tight">הפועל אורנית</h1>
+          <p className="text-xs text-[var(--muted)]">סקאוט · ניתוח משחק</p>
+        </div>
       </div>
-      <p className="mb-5 text-center text-xs font-bold tracking-[0.18em] text-[var(--muted)]">
-        סקאוט · ניתוח משחק
-      </p>
 
       <ConfigBanner />
 
@@ -114,6 +117,7 @@ export default function HomePage() {
           </li>
         ))}
       </ul>
+      </div>
     </main>
   );
 }
