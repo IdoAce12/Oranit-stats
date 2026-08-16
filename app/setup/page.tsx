@@ -7,15 +7,16 @@ import { LineupPitch } from "../components/LineupPitch";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 import { addPlayers, createMatch, listSquad } from "@/lib/db";
-import { autoAssignSlots, LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
+import { LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { SquadPlayer } from "@/lib/types";
 
-type Step = 1 | 2;
+type Step = 1 | 2 | 3;
 
 interface Selection {
   selected: boolean;
+  starter: boolean;
   number: string;
 }
 
@@ -32,6 +33,7 @@ export default function SetupPage() {
   const [sel, setSel] = useState<Record<string, Selection>>({});
   const [slots, setSlots] = useState<(string | null)[]>(() => Array(LINEUP_SIZE).fill(null));
   const [pickId, setPickId] = useState<string | null>(null);
+  const [pickSlot, setPickSlot] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,7 @@ export default function SetupPage() {
         all.forEach((p) => {
           initial[p.id] = {
             selected: p.active !== false,
+            starter: false,
             number: String(p.shirt_number),
           };
         });
@@ -62,7 +65,12 @@ export default function SetupPage() {
     [squad, sel]
   );
   const selectedCount = selectedSquad.length;
-  const starterCount = slots.filter(Boolean).length;
+  const xiSquad = useMemo(
+    () => selectedSquad.filter((p) => sel[p.id]?.starter),
+    [selectedSquad, sel]
+  );
+  const starterCount = xiSquad.length;
+  const placedCount = slots.filter(Boolean).length;
 
   const occupants = useMemo((): (PitchOccupant | null)[] => {
     return slots.map((id) => {
@@ -78,16 +86,35 @@ export default function SetupPage() {
   }, [slots, squad, sel]);
 
   const onPitchIds = useMemo(() => new Set(slots.filter(Boolean) as string[]), [slots]);
-  const benchSquad = useMemo(
-    () => selectedSquad.filter((p) => !onPitchIds.has(p.id)),
-    [selectedSquad, onPitchIds]
+  const unplacedXi = useMemo(
+    () => xiSquad.filter((p) => !onPitchIds.has(p.id)),
+    [xiSquad, onPitchIds]
   );
+  const matchBenchCount = selectedCount - starterCount;
+  const allXiPlaced = starterCount > 0 && unplacedXi.length === 0;
 
   const toggle = (id: string) =>
     setSel((prev) => ({
       ...prev,
-      [id]: { ...prev[id], selected: !prev[id].selected },
+      [id]: { ...prev[id], selected: !prev[id].selected, starter: false },
     }));
+
+  const toggleStarter = (id: string) => {
+    const cur = sel[id];
+    if (!cur?.selected) return;
+    if (cur.starter) {
+      setSel((prev) => ({ ...prev, [id]: { ...prev[id], starter: false } }));
+      setSlots((prev) => prev.map((sid) => (sid === id ? null : sid)));
+      setError(null);
+      return;
+    }
+    if (starterCount >= MAX_STARTERS) {
+      setError(`אפשר לבחור עד ${MAX_STARTERS} שחקני שדה בהרכב הפותח`);
+      return;
+    }
+    setError(null);
+    setSel((prev) => ({ ...prev, [id]: { ...prev[id], starter: true } }));
+  };
 
   const setNumber = (id: string, number: string) =>
     setSel((prev) => ({ ...prev, [id]: { ...prev[id], number } }));
@@ -95,12 +122,16 @@ export default function SetupPage() {
   const setAll = (value: boolean) =>
     setSel((prev) => {
       const next = { ...prev };
-      Object.keys(next).forEach((id) => (next[id] = { ...next[id], selected: value }));
+      Object.keys(next).forEach(
+        (id) => (next[id] = { ...next[id], selected: value, starter: value ? next[id].starter : false })
+      );
       return next;
     });
 
-  const pruneSlots = (selected: Record<string, Selection>) =>
-    setSlots((prev) => prev.map((id) => (id && selected[id]?.selected ? id : null)));
+  const clearPicks = () => {
+    setPickId(null);
+    setPickSlot(null);
+  };
 
   const placeOnPitch = (playerId: string, slot: number) => {
     setSlots((prev) => {
@@ -108,26 +139,16 @@ export default function SetupPage() {
       const from = next.findIndex((id) => id === playerId);
       const occupant = next[slot];
       if (from >= 0) next[from] = occupant ?? null;
-      else if (occupant) {
-        /* swap with whoever is there — incoming from bench */
-      }
       next[slot] = playerId;
       return next;
     });
-    setPickId(null);
+    clearPicks();
     setError(null);
   };
 
   const removeFromPitch = (playerId: string) => {
     setSlots((prev) => prev.map((id) => (id === playerId ? null : id)));
-    setPickId(null);
-  };
-
-  const autoFill = () => {
-    const assigned = autoAssignSlots(selectedSquad);
-    setSlots(assigned);
-    setPickId(null);
-    setError(null);
+    clearPicks();
   };
 
   const onSlotClick = (slot: number, player: PitchOccupant | null) => {
@@ -137,27 +158,45 @@ export default function SetupPage() {
     }
     if (player) {
       setPickId(player.id);
+      setPickSlot(null);
       return;
     }
+    setPickSlot((cur) => (cur === slot ? null : slot));
   };
+
+  const onUnplacedClick = (id: string) => {
+    if (pickSlot != null) {
+      placeOnPitch(id, pickSlot);
+      return;
+    }
+    setPickId((cur) => (cur === id ? null : id));
+  };
+
+  const pruneSlotsToStarters = (selection: Record<string, Selection>) =>
+    setSlots((prev) => prev.map((id) => (id && selection[id]?.starter ? id : null)));
 
   const goStep2 = () => {
     setError(null);
     if (!opponent.trim()) return setError("צריך להזין שם יריב");
     if (selectedCount === 0) return setError("בחר לפחות שחקן אחד לסגל המשחק");
-    const pruned = slots.map((id) => (id && sel[id]?.selected ? id : null));
-    const filled = pruned.filter(Boolean).length;
-    setSlots(filled > 0 ? pruned : autoAssignSlots(selectedSquad));
-    setPickId(null);
     setStep(2);
+  };
+
+  const goStep3 = () => {
+    setError(null);
+    if (starterCount === 0) return setError("בחר לפחות שחקן אחד בהרכב הפותח");
+    if (starterCount > MAX_STARTERS) {
+      return setError(`מקסימום ${MAX_STARTERS} שחקני שדה בהרכב הפותח`);
+    }
+    pruneSlotsToStarters(sel);
+    clearPicks();
+    setStep(3);
   };
 
   const handleSubmit = async () => {
     setError(null);
-    if (starterCount === 0) return setError("מקם לפחות שחקן אחד על המגרש");
-    if (starterCount > MAX_STARTERS) {
-      return setError(`מקסימום ${MAX_STARTERS} שחקני שדה בהרכב הפותח`);
-    }
+    if (starterCount === 0) return setError("בחר הרכב פותח");
+    if (!allXiPlaced) return setError("מקם כל שחקן פותח על המגרש לפני תחילת המשחק");
 
     const slotById = new Map<string, number>();
     slots.forEach((id, i) => {
@@ -166,7 +205,7 @@ export default function SetupPage() {
 
     const chosen = selectedSquad.map((p) => {
       const slot = slotById.get(p.id);
-      const starter = slot !== undefined;
+      const starter = sel[p.id].starter === true;
       return {
         squad_player_id: p.id,
         shirt_number: parseInt(sel[p.id].number, 10) || p.shirt_number,
@@ -174,7 +213,7 @@ export default function SetupPage() {
         position: p.position,
         is_starter: starter,
         on_pitch: starter,
-        lineup_slot: starter ? slot! : null,
+        lineup_slot: starter && slot !== undefined ? slot : null,
       };
     });
 
@@ -198,30 +237,39 @@ export default function SetupPage() {
     }
   };
 
+  const titles: Record<Step, { title: string; subtitle: string }> = {
+    1: { title: "משחק חדש — סגל", subtitle: "שלב 1 מתוך 3 · בחירת סגל למשחק" },
+    2: {
+      title: "משחק חדש — הרכב פותח",
+      subtitle: `שלב 2 מתוך 3 · עד ${MAX_STARTERS} שחקני שדה`,
+    },
+    3: { title: "משחק חדש — עמדות", subtitle: "שלב 3 מתוך 3 · מקם כל פותח על המגרש" },
+  };
+
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-28">
       <AppHeader
-        title={step === 1 ? "משחק חדש — סגל" : "משחק חדש — הרכב"}
-        subtitle={
-          step === 1
-            ? "שלב 1 מתוך 2 · בחירת סגל למשחק"
-            : `שלב 2 מתוך 2 · פורמציה 4-3-3 · עד ${MAX_STARTERS} שחקני שדה`
-        }
+        title={titles[step].title}
+        subtitle={titles[step].subtitle}
         backHref={step === 1 ? "/" : undefined}
       />
 
-      {step === 2 && (
+      {step !== 1 && (
         <button
           type="button"
           onClick={() => {
-            pruneSlots(sel);
-            setPickId(null);
-            setStep(1);
+            if (step === 3) {
+              pruneSlotsToStarters(sel);
+              clearPicks();
+              setStep(2);
+            } else {
+              setStep(1);
+            }
             setError(null);
           }}
           className="mb-3 text-sm font-bold text-[var(--muted)]"
         >
-          ← חזרה לסגל
+          {step === 3 ? "← חזרה להרכב הפותח" : "← חזרה לסגל"}
         </button>
       )}
 
@@ -275,7 +323,7 @@ export default function SetupPage() {
             </div>
           </div>
           <p className="mb-2 text-[11px] text-[var(--muted-2)]">
-            בשלב הזה בוחרים מי בסגל המשחק בלבד — ההרכב על המגרש בשלב הבא.
+            בשלב הזה בוחרים מי בסגל המשחק בלבד — ההרכב הפותח בשלב הבא, והעמדות אחריו.
           </p>
         </>
       )}
@@ -285,44 +333,64 @@ export default function SetupPage() {
           <div className="card mb-3 px-4 py-3 text-sm">
             <p className="font-bold">מול {opponent}</p>
             <p className="text-[var(--muted)]">
-              על המגרש:{" "}
+              פותחים:{" "}
               <span className="tabular text-[var(--accent)]">
                 {starterCount}/{MAX_STARTERS}
               </span>
               {" · "}
-              ספסל: <span className="tabular">{benchSquad.length}</span>
+              ספסל: <span className="tabular">{matchBenchCount}</span>
             </p>
           </div>
           <p className="mb-2 text-[11px] text-[var(--muted-2)]">
-            לחץ על שחקן מהספסל ואז על עמדה במגרש. לחיצה על שחקן במגרש ואז על עמדה אחרת מחליפה מקום.
+            לחץ XI על עד {MAX_STARTERS} שחקני שדה. בשלב הבא תמקם אותם על המגרש בעצמך.
           </p>
-          <div className="mb-3 flex gap-2">
-            <button type="button" onClick={autoFill} className="btn btn-ghost h-9 flex-1 text-xs">
-              סדר אוטומטית
-            </button>
-            {pickId && onPitchIds.has(pickId) && (
-              <button
-                type="button"
-                onClick={() => removeFromPitch(pickId)}
-                className="btn btn-danger h-9 flex-1 text-xs"
-              >
-                הורד לספסל
-              </button>
-            )}
+        </>
+      )}
+
+      {step === 3 && (
+        <>
+          <div className="card mb-3 px-4 py-3 text-sm">
+            <p className="font-bold">מול {opponent}</p>
+            <p className="text-[var(--muted)]">
+              מוקמו:{" "}
+              <span className="tabular text-[var(--accent)]">
+                {placedCount}/{starterCount}
+              </span>
+              {unplacedXi.length > 0 && (
+                <>
+                  {" · "}נותרו <span className="tabular">{unplacedXi.length}</span>
+                </>
+              )}
+            </p>
           </div>
+          <p className="mb-3 text-[11px] text-[var(--muted-2)]">
+            לחץ על שחקן ואז על עמדה במגרש — או קודם על עמדה ריקה ואז על שחקן. ריק = תווית העמדה.
+          </p>
+          {pickId && onPitchIds.has(pickId) && (
+            <button
+              type="button"
+              onClick={() => removeFromPitch(pickId)}
+              className="btn btn-danger mb-3 h-9 w-full text-xs"
+            >
+              הורד מהמגרש
+            </button>
+          )}
           <LineupPitch
             occupants={occupants}
             onSlotClick={onSlotClick}
             highlightPlayerId={pickId}
+            highlightSlot={pickSlot}
             showSlotLabels
           />
-          <p className="label mt-3 mb-2">ספסל — לחץ ואז בחר עמדה</p>
+          <p className="label mt-3 mb-2">
+            {unplacedXi.length > 0 ? "פותחים שטרם מוקמו" : "כל הפותחים על המגרש"}
+          </p>
           <div className="grid grid-cols-4 gap-2">
-            {benchSquad.map((p) => (
+            {unplacedXi.map((p) => (
               <button
                 key={p.id}
                 type="button"
-                onClick={() => setPickId((cur) => (cur === p.id ? null : p.id))}
+                onClick={() => onUnplacedClick(p.id)}
                 className={`btn card flex-col py-2.5 active:scale-95 ${
                   pickId === p.id ? "border-[var(--accent)] bg-[var(--accent)]/15" : ""
                 }`}
@@ -333,8 +401,10 @@ export default function SetupPage() {
                 <span className="max-w-full truncate text-[11px] text-[var(--muted)]">{p.name}</span>
               </button>
             ))}
-            {benchSquad.length === 0 && (
-              <p className="col-span-4 text-center text-sm text-[var(--muted)]">הספסל ריק</p>
+            {unplacedXi.length === 0 && (
+              <p className="col-span-4 text-center text-sm text-[var(--accent)]">
+                אפשר להתחיל. אפשר עדיין להחליף מקומות בלחיצה על שחקן במגרש ואז על עמדה אחרת.
+              </p>
             )}
           </div>
         </>
@@ -397,26 +467,72 @@ export default function SetupPage() {
         </ul>
       )}
 
+      {step === 2 && (
+        <ul className="flex flex-col gap-2">
+          {selectedSquad.map((p) => {
+            const s = sel[p.id];
+            const isXi = s?.starter === true;
+            return (
+              <li
+                key={p.id}
+                className={`card flex items-center gap-3 p-2.5 ${isXi ? "border-[var(--accent)]/40" : ""}`}
+              >
+                <span className="field flex h-11 w-14 shrink-0 items-center justify-center px-0 text-lg font-extrabold tabular">
+                  {s?.number}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-bold">{p.name}</p>
+                  <p className="text-xs text-[var(--muted)]">{isXi ? "הרכב פותח" : "ספסל"}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleStarter(p.id)}
+                  className={`shrink-0 rounded-lg px-3 py-2 text-xs font-black ${
+                    isXi
+                      ? "bg-[var(--accent)] text-[#04150e]"
+                      : "bg-[var(--panel-strong)] text-[var(--muted)]"
+                  }`}
+                >
+                  {isXi ? "XI" : "ספסל"}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
       {error && <p className="mt-3 text-[var(--danger)]">{error}</p>}
 
       <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md p-4">
-        {step === 1 ? (
+        {step === 1 && (
           <button
             onClick={goStep2}
             disabled={!isSupabaseConfigured || squad.length === 0}
             className="btn btn-primary w-full py-4 text-lg shadow-2xl"
           >
-            המשך להרכב ← ({selectedCount})
+            המשך להרכב פותח ← ({selectedCount})
           </button>
-        ) : (
+        )}
+        {step === 2 && (
+          <button
+            onClick={goStep3}
+            disabled={starterCount === 0}
+            className="btn btn-primary w-full py-4 text-lg shadow-2xl"
+          >
+            המשך לעמדות ← ({starterCount} פותחים)
+          </button>
+        )}
+        {step === 3 && (
           <button
             onClick={handleSubmit}
-            disabled={saving || starterCount === 0}
+            disabled={saving || !allXiPlaced}
             className="btn btn-primary w-full py-4 text-lg shadow-2xl"
           >
             {saving
               ? "מתחיל..."
-              : `התחל משחק ← (${starterCount} על המגרש · ${benchSquad.length} ספסל)`}
+              : allXiPlaced
+                ? `התחל משחק ← (${placedCount} על המגרש · ${matchBenchCount} ספסל)`
+                : `מקם עוד ${unplacedXi.length} על המגרש`}
           </button>
         )}
       </div>
