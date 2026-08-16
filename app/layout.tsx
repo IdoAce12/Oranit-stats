@@ -19,8 +19,8 @@ export const metadata: Metadata = {
     title: "סקאוט",
   },
   icons: {
-    icon: "/icon.svg",
-    apple: "/icon.svg",
+    icon: "/hapoel-oranit.png",
+    apple: "/hapoel-oranit.png",
   },
 };
 

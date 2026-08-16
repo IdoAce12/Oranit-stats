@@ -24,18 +24,18 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-8 pb-10">
-      <div className="mb-7 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-b from-[var(--accent)] to-[var(--accent-strong)] text-xl font-black text-[#04150e] shadow-lg">
-            S
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold leading-tight">סקאוט</h1>
-            <p className="text-xs text-[var(--muted)]">ניתוח משחק · ליגה ג׳</p>
-          </div>
-        </div>
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-5 pb-10">
+      <div className="mb-5 overflow-hidden rounded-[2rem] border border-white/10 shadow-[0_24px_50px_-24px_rgba(15,50,140,0.9)]">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/hapoel-oranit.png"
+          alt="הפועל אורנית"
+          className="block w-full"
+        />
       </div>
+      <p className="mb-5 text-center text-xs font-bold tracking-[0.18em] text-[var(--muted)]">
+        סקאוט · ניתוח משחק
+      </p>
 
       <ConfigBanner />
 
