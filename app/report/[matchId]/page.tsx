@@ -20,7 +20,6 @@ import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 import { PlayerCardSheet } from "./PlayerCardSheet";
 import { PageSkeleton } from "../../components/Skeleton";
-import { PitchHeatmap } from "../../components/PitchHeatmap";
 import { roundMetric } from "@/lib/advancedMetrics";
 
 export default function ReportPage() {
@@ -263,20 +262,7 @@ export default function ReportPage() {
             <StatCard value={team.eventsTotal} label="אירועים" />
           </section>
 
-          <section className="mb-4">
-            <PitchHeatmap
-              title="מפת פעילות קבוצתית"
-              zones={{
-                def: team.losses.def + team.tackles.def,
-                mid: team.losses.mid + team.tackles.mid,
-                att: team.losses.att + team.tackles.att,
-              }}
-              shotsInBox={team.shotsInBox}
-              shotsOutBox={team.shotsOutBox}
-            />
-          </section>
-
-          {/* מפת חום אזורים */}
+          {/* איבודים וחילוצים לפי אזור */}
           <section className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <HeatCard title="איבודים לפי אזור" data={team.losses} pct={lossHeat} tone="danger" />
             <HeatCard title="חילוצים לפי אזור" data={team.tackles} pct={tackleHeat} tone="accent" />

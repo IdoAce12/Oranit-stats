@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { RadarProfile } from "../../components/RadarProfile";
 import { TrendChart } from "../../components/TrendChart";
-import { PitchHeatmap } from "../../components/PitchHeatmap";
 import { AppHeader } from "../../components/AppHeader";
 import { PageSkeleton } from "../../components/Skeleton";
 import { loadSeasonBundle } from "@/lib/db";
@@ -69,36 +68,10 @@ export default function ComparePage() {
     [a, b, rows]
   );
 
-  const aEvents = useMemo(() => {
-    if (!a) return [];
-    const ids = new Set(
-      players
-        .filter((p) => (p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`) === a.key)
-        .map((p) => p.id)
-    );
-    return events.filter((e) => e.player_id && ids.has(e.player_id));
-  }, [a, players, events]);
-
-  const bEvents = useMemo(() => {
-    if (!b) return [];
-    const ids = new Set(
-      players
-        .filter((p) => (p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`) === b.key)
-        .map((p) => p.id)
-    );
-    return events.filter((e) => e.player_id && ids.has(e.player_id));
-  }, [b, players, events]);
-
   const aLines = useMemo(
     () => (a ? computePlayerSeasonMatches(a.key, events, players, matches) : []),
     [a, events, players, matches]
   );
-
-  const zoneOf = (list: MatchEvent[]) => ({
-    def: list.filter((e) => e.zone === "def").length,
-    mid: list.filter((e) => e.zone === "mid").length,
-    att: list.filter((e) => e.zone === "att").length,
-  });
 
   if (loading) {
     return (
@@ -183,23 +156,6 @@ export default function ComparePage() {
                 ))}
               </tbody>
             </table>
-          </div>
-
-          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <PitchHeatmap
-              title={a.label}
-              zones={zoneOf(aEvents)}
-              shotsInBox={a.shotsInBox}
-              shotsOutBox={a.shotsOutBox}
-            />
-            {b && (
-              <PitchHeatmap
-                title={b.label}
-                zones={zoneOf(bEvents)}
-                shotsInBox={b.shotsInBox}
-                shotsOutBox={b.shotsOutBox}
-              />
-            )}
           </div>
 
           {aLines.length > 0 && (

@@ -14,7 +14,6 @@ import { AppHeader } from "../../../components/AppHeader";
 import { PageSkeleton } from "../../../components/Skeleton";
 import { RadarProfile } from "../../../components/RadarProfile";
 import { TrendChart } from "../../../components/TrendChart";
-import { PitchHeatmap } from "../../../components/PitchHeatmap";
 import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
 
 const LOAD_TIMEOUT_MS = 12000;
@@ -80,24 +79,6 @@ export default function SeasonPlayerPage() {
   const radar = useMemo(
     () => (seasonRow ? buildRadarData(seasonRow, allRows) : []),
     [seasonRow, allRows]
-  );
-
-  const playerEvents = useMemo(() => {
-    const ids = new Set(
-      players
-        .filter((p) => (p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`) === playerKey)
-        .map((p) => p.id)
-    );
-    return events.filter((e) => e.player_id && ids.has(e.player_id));
-  }, [events, players, playerKey]);
-
-  const zoneHeat = useMemo(
-    () => ({
-      def: playerEvents.filter((e) => e.zone === "def").length,
-      mid: playerEvents.filter((e) => e.zone === "mid").length,
-      att: playerEvents.filter((e) => e.zone === "att").length,
-    }),
-    [playerEvents]
   );
 
   if (loading) {
@@ -211,15 +192,6 @@ export default function SeasonPlayerPage() {
             <div className="text-[var(--muted-2)]">התקפה</div>
           </div>
         </div>
-      </section>
-
-      <section className="mb-4">
-        <PitchHeatmap
-          title="מפת פעילות"
-          zones={zoneHeat}
-          shotsInBox={seasonRow.shotsInBox}
-          shotsOutBox={seasonRow.shotsOutBox}
-        />
       </section>
 
       {matchLines.length > 1 && (
