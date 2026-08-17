@@ -6,6 +6,7 @@ import { loadSeasonBundle } from "@/lib/db";
 import { downloadCsv, seasonTableCsv } from "@/lib/exportCsv";
 import { computeSeasonImpact, SeasonImpact } from "@/lib/impactScore";
 import { computeTeamSeasonTrend, roundMetric } from "@/lib/advancedMetrics";
+import { withTimeout } from "@/lib/withTimeout";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
@@ -37,22 +38,6 @@ type SortKey =
   | "matchesPlayed";
 
 const LOAD_TIMEOUT_MS = 12000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("הטעינה ארכה יותר מדי. נסה שוב.")), ms);
-    promise.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
 
 function sortValue(r: SeasonImpact, key: SortKey): number {
   return r[key];

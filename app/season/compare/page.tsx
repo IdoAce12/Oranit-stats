@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { RadarProfile } from "../../components/RadarProfile";
 import { TrendChart } from "../../components/TrendChart";
@@ -14,25 +13,10 @@ import {
   computeSeasonMinutesByKey,
 } from "@/lib/impactScore";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import { withTimeout } from "@/lib/withTimeout";
 import { Match, MatchEvent, Player, SquadPlayer, Substitution } from "@/lib/types";
 
 const LOAD_TIMEOUT_MS = 12000;
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error("הטעינה ארכה יותר מדי. נסה שוב.")), ms);
-    promise.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      }
-    );
-  });
-}
 
 export default function ComparePage() {
   const [events, setEvents] = useState<MatchEvent[]>([]);
