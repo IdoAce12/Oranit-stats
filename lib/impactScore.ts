@@ -1,4 +1,5 @@
 import { ActionType, MatchEvent, Player, SquadPlayer, Zone } from "./types";
+import { xaForEvent, xgForEvent } from "./advancedMetrics";
 
 // =============================================================
 // משקולות ה-Impact Score - כאן מכיילים אחרי כמה משחקים.
@@ -152,6 +153,8 @@ export interface SeasonImpact {
   attLosses: number;
   shotsInBox: number;
   shotsOutBox: number;
+  xg: number;
+  xa: number;
   perMatch: number;
 }
 
@@ -199,6 +202,8 @@ export function computeSeasonImpact(
         attLosses: 0,
         shotsInBox: 0,
         shotsOutBox: 0,
+        xg: 0,
+        xa: 0,
         perMatch: 0,
       });
     }
@@ -227,6 +232,8 @@ export function computeSeasonImpact(
       if (ev.shot_location === "in_box") entry.shotsInBox += 1;
       else entry.shotsOutBox += 1;
     }
+    entry.xg += xgForEvent(ev);
+    entry.xa += xaForEvent(ev);
   }
 
   for (const [key, matches] of matchesByKey) {
@@ -251,6 +258,8 @@ export interface PlayerMatchLine {
   losses: number;
   defLosses: number;
   shotsInBox: number;
+  xg: number;
+  xa: number;
   score: number;
 }
 
@@ -283,6 +292,8 @@ export function computePlayerSeasonMatches(
         losses: 0,
         defLosses: 0,
         shotsInBox: 0,
+        xg: 0,
+        xa: 0,
         score: 0,
       });
     }
@@ -302,6 +313,8 @@ export function computePlayerSeasonMatches(
       if (ev.zone === "def") line.defLosses += 1;
     }
     if (ev.action_type === "shot" && ev.shot_location === "in_box") line.shotsInBox += 1;
+    line.xg += xgForEvent(ev);
+    line.xa += xaForEvent(ev);
   }
 
   return Array.from(byMatch.values()).sort((a, b) =>

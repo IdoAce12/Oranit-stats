@@ -5,10 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import { loadSeasonBundle } from "@/lib/db";
 import { downloadCsv, seasonTableCsv } from "@/lib/exportCsv";
 import { computeSeasonImpact, SeasonImpact } from "@/lib/impactScore";
+import { computeTeamSeasonTrend, roundMetric } from "@/lib/advancedMetrics";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { MatchEvent, Player, SquadPlayer } from "@/lib/types";
+import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
+import { PageSkeleton } from "../components/Skeleton";
+import { TrendChart } from "../components/TrendChart";
 
 type SortKey =
   | "score"
@@ -18,6 +21,8 @@ type SortKey =
   | "keyPasses"
   | "tackles"
   | "lossesTotal"
+  | "xg"
+  | "xa"
   | "matchesPlayed";
 
 const LOAD_TIMEOUT_MS = 12000;
@@ -46,11 +51,14 @@ export default function SeasonPage() {
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [matchesCount, setMatchesCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("score");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [view, setView] = useState<"cards" | "table">("cards");
+  const [query, setQuery] = useState("");
 
   const load = () => {
     if (!isSupabaseConfigured) {
@@ -64,6 +72,7 @@ export default function SeasonPage() {
         setEvents(bundle.events);
         setPlayers(bundle.players);
         setSquad(bundle.squad);
+        setMatches(bundle.matches);
         setMatchesCount(bundle.matchesCount);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "שגיאה בטעינה"))
@@ -80,8 +89,40 @@ export default function SeasonPage() {
         r.goals + r.assists + r.keyPasses + r.tackles + r.lossesTotal + r.shotsInBox > 0
     );
     const list = withActivity.length > 0 ? withActivity : base;
-    return [...list].sort((a, b) => sortValue(b, sortKey) - sortValue(a, sortKey));
-  }, [events, players, squad, sortKey]);
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? list.filter(
+          (r) =>
+            r.label.toLowerCase().includes(q) || String(r.shirtNumber ?? "").includes(q)
+        )
+      : list;
+    const dir = sortDir === "desc" ? -1 : 1;
+    return [...filtered].sort((a, b) => {
+      const av = sortValue(a, sortKey);
+      const bv = sortValue(b, sortKey);
+      if (av === bv) return a.label.localeCompare(b.label, "he");
+      return av > bv ? -dir : dir;
+    });
+  }, [events, players, squad, sortKey, sortDir, query]);
+
+  const teamTrend = useMemo(
+    () =>
+      computeTeamSeasonTrend(events, matches).map((m) => ({
+        label: m.opponent.slice(0, 8),
+        score: m.goals,
+        xg: roundMetric(m.xg),
+        tackles: m.tackles,
+      })),
+    [events, matches]
+  );
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
+    else {
+      setSortKey(key);
+      setSortDir("desc");
+    }
+  };
 
   const maxAbs = useMemo(
     () => Math.max(1, ...rows.map((r) => Math.abs(sortValue(r, sortKey)))),
@@ -118,7 +159,17 @@ export default function SeasonPage() {
         <button onClick={exportSeason} disabled={rows.length === 0} className="btn btn-ghost h-9 px-3 text-sm">
           ⬇
         </button>
+        <Link href="/season/compare" className="btn btn-ghost h-9 px-3 text-sm">
+          H2H
+        </Link>
       </div>
+
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="חיפוש שחקן / מספר..."
+        className="field mb-3 w-full"
+      />
 
       <div className="mb-3 flex flex-wrap gap-1.5">
         {(
@@ -130,12 +181,14 @@ export default function SeasonPage() {
             ["keyPasses", "מס״מ"],
             ["tackles", "חילוצים"],
             ["lossesTotal", "איבודים"],
+            ["xg", "xG"],
+            ["xa", "xA"],
             ["matchesPlayed", "משחקים"],
           ] as [SortKey, string][]
         ).map(([k, label]) => (
           <button
             key={k}
-            onClick={() => setSortKey(k)}
+            onClick={() => toggleSort(k)}
             className={`btn h-8 px-2.5 text-xs ${sortKey === k ? "btn-primary" : "btn-ghost"}`}
           >
             {label}
@@ -143,12 +196,7 @@ export default function SeasonPage() {
         ))}
       </div>
 
-      {loading && (
-        <div className="card flex flex-col items-center gap-3 p-8 text-sm text-[var(--muted)]">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[var(--border-strong)] border-t-[var(--accent)]" />
-          טוען נתונים עונתיים...
-        </div>
-      )}
+      {loading && <PageSkeleton rows={8} />}
 
       {error && (
         <div className="card border border-red-500/30 p-4 text-sm text-red-200">
@@ -167,6 +215,19 @@ export default function SeasonPage() {
               ? "יש משחקים, אבל עדיין בלי אירועים עם שחקן — רשום פעולות בלייב."
               : "עדיין אין נתונים עונתיים להצגה."}
         </div>
+      )}
+
+      {!loading && rows.length > 0 && teamTrend.length > 1 && (
+        <section className="card mb-4 p-3">
+          <p className="label mb-1">מגמת קבוצה לאורך העונה</p>
+          <TrendChart
+            data={teamTrend}
+            series={[
+              { key: "score", label: "שערים", color: "#34d399" },
+              { key: "xg", label: "xG", color: "#60a5fa" },
+            ]}
+          />
+        </section>
       )}
 
       {!loading && rows.length > 0 && view === "cards" && (
@@ -202,7 +263,8 @@ export default function SeasonPage() {
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
                     {row.matchesPlayed} מש׳ · {row.goals} שער · {row.assists} ביש · {row.keyPasses}{" "}
-                    מס״מ · {row.tackles} חילוץ · {row.lossesTotal} איבודים
+                    מס״מ · {row.tackles} חילוץ · {row.lossesTotal} איבודים · xG{" "}
+                    {roundMetric(row.xg)}
                   </p>
                 </div>
                 <div className="text-left">
@@ -235,15 +297,27 @@ export default function SeasonPage() {
                 <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[10px] text-[var(--muted)]">
                   <th className="sticky right-0 bg-[var(--panel-strong)] px-2 py-2 text-right">#</th>
                   <th className="sticky right-8 bg-[var(--panel-strong)] px-2 py-2 text-right">שחקן</th>
-                  <th className="px-1.5 py-2">מש׳</th>
-                  <th className="px-1.5 py-2">שער</th>
-                  <th className="px-1.5 py-2">ביש</th>
-                  <th className="px-1.5 py-2">מס״מ</th>
-                  <th className="px-1.5 py-2">חילוץ</th>
-                  <th className="px-1.5 py-2">איבודים</th>
-                  <th className="px-1.5 py-2">רחבה</th>
-                  <th className="px-1.5 py-2">ציון</th>
-                  <th className="px-1.5 py-2">ממ׳</th>
+                  {(
+                    [
+                      ["matchesPlayed", "מש׳"],
+                      ["goals", "שער"],
+                      ["assists", "ביש"],
+                      ["keyPasses", "מס״מ"],
+                      ["tackles", "חילוץ"],
+                      ["lossesTotal", "איבודים"],
+                      ["xg", "xG"],
+                      ["xa", "xA"],
+                      ["score", "ציון"],
+                      ["perMatch", "ממ׳"],
+                    ] as [SortKey, string][]
+                  ).map(([k, label]) => (
+                    <th key={k} className="px-1.5 py-2">
+                      <button type="button" onClick={() => toggleSort(k)} className="font-bold">
+                        {label}
+                        {sortKey === k ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -266,7 +340,8 @@ export default function SeasonPage() {
                     <td className="tabular px-1.5 py-2">{row.keyPasses}</td>
                     <td className="tabular px-1.5 py-2">{row.tackles}</td>
                     <td className="tabular px-1.5 py-2 text-[var(--danger)]">{row.lossesTotal}</td>
-                    <td className="tabular px-1.5 py-2">{row.shotsInBox}</td>
+                    <td className="tabular px-1.5 py-2">{roundMetric(row.xg)}</td>
+                    <td className="tabular px-1.5 py-2">{roundMetric(row.xa)}</td>
                     <td
                       className={`tabular px-1.5 py-2 font-black ${
                         row.score > 0

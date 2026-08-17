@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+[data-theme="dark"] {
   --bg: #070d24;
   --panel: rgba(255, 255, 255, 0.045);
   --panel-strong: rgba(255, 255, 255, 0.08);
@@ -14,6 +15,41 @@
   --danger: #f87171;
   --warn: #fbbf24;
   --info: #60a5fa;
+}
+
+[data-theme="light"] {
+  --bg: #eef2f8;
+  --panel: rgba(255, 255, 255, 0.72);
+  --panel-strong: rgba(15, 30, 70, 0.06);
+  --border: rgba(15, 30, 70, 0.1);
+  --border-strong: rgba(15, 30, 70, 0.18);
+  --text: #0f172a;
+  --muted: rgba(15, 23, 42, 0.58);
+  --muted-2: rgba(15, 23, 42, 0.4);
+  --accent: #0d9488;
+  --accent-strong: #0f766e;
+  --danger: #dc2626;
+  --warn: #d97706;
+  --info: #2563eb;
+}
+
+[data-theme="light"] .app-bg {
+  background:
+    radial-gradient(60% 45% at 85% -5%, rgba(37, 99, 235, 0.12), transparent 60%),
+    radial-gradient(55% 40% at 0% 0%, rgba(13, 148, 136, 0.1), transparent 55%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f8 55%, #e8eef8 100%);
+}
+
+[data-theme="light"] .field {
+  background: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .btn-danger {
+  color: #991b1b;
+}
+
+[data-theme="light"] .home-crest-bg {
+  opacity: 0.1;
 }
 
 @theme inline {
@@ -158,4 +194,21 @@ button {
 
 .tabular {
   font-variant-numeric: tabular-nums;
+}
+
+@media print {
+  .app-bg,
+  .home-crest-bg,
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+  .card {
+    break-inside: avoid;
+    box-shadow: none;
+    border: 1px solid #d4d4d8;
+  }
 }

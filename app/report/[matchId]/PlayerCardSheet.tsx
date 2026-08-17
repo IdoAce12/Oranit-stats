@@ -2,6 +2,7 @@
 
 import { MatchEvent } from "@/lib/types";
 import { PlayerMatchStats } from "@/lib/playerStats";
+import { roundMetric } from "@/lib/advancedMetrics";
 import { ACTION_LABELS, ZONE_LABELS, SHOT_LABELS } from "@/lib/types";
 import type { ReactNode } from "react";
 
@@ -25,7 +26,7 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="sheet max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[#0c1322] p-4 pb-8 sm:rounded-3xl sm:border"
+        className="sheet max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[var(--bg)] p-4 pb-8 sm:rounded-3xl sm:border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
@@ -56,6 +57,10 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
           <BigStat value={stats.keyPassesTotal} label="מס״מ" tone="info" />
           <BigStat value={stats.tacklesTotal} label="חילוצים" tone="accent" />
           <BigStat value={stats.lossesTotal} label="איבודים" tone="danger" />
+        </div>
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <BigStat value={roundMetric(stats.xg)} label="xG" tone="info" />
+          <BigStat value={roundMetric(stats.xa)} label="xA" tone="cyan" />
         </div>
 
         {/* פירוק אזורים */}

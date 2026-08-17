@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
+import { PageSkeleton } from "../components/Skeleton";
 import {
   addSquadPlayer,
   deleteSquadPlayer,
@@ -33,6 +34,8 @@ export default function SquadPage() {
   const [newName, setNewName] = useState("");
   const [newPosition, setNewPosition] = useState("");
   const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState("");
+  const [sortBy, setSortBy] = useState<"shirt_number" | "name" | "position">("shirt_number");
 
   const load = () => {
     if (!isSupabaseConfigured) {
@@ -46,6 +49,23 @@ export default function SquadPage() {
   };
 
   useEffect(load, []);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const filtered = q
+      ? squad.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            String(p.shirt_number).includes(q) ||
+            (p.position ?? "").toLowerCase().includes(q)
+        )
+      : squad;
+    return [...filtered].sort((a, b) => {
+      if (sortBy === "name") return a.name.localeCompare(b.name, "he");
+      if (sortBy === "position") return (a.position ?? "").localeCompare(b.position ?? "", "he");
+      return a.shirt_number - b.shirt_number;
+    });
+  }, [squad, query, sortBy]);
 
   const handleAdd = async () => {
     setError(null);
@@ -206,7 +226,25 @@ export default function SquadPage() {
 
       {error && <p className="mb-3 text-[var(--danger)]">{error}</p>}
 
-      {loading && <p className="text-[var(--muted)]">טוען...</p>}
+      <div className="mb-3 flex gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="חיפוש שם / מספר / עמדה"
+          className="field min-w-0 flex-1"
+        />
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
+          className="field w-28 shrink-0 px-2 text-sm"
+        >
+          <option value="shirt_number">מספר</option>
+          <option value="name">שם</option>
+          <option value="position">עמדה</option>
+        </select>
+      </div>
+
+      {loading && <PageSkeleton rows={6} />}
 
       {!loading && squad.length === 0 && (
         <div className="card p-6 text-center text-sm text-[var(--muted)]">
@@ -215,7 +253,7 @@ export default function SquadPage() {
       )}
 
       <ul className="flex flex-col gap-2">
-        {squad.map((p) => (
+        {visible.map((p) => (
           <li
             key={p.id}
             className={`card flex items-center gap-2 p-2.5 ${p.active ? "" : "opacity-45"}`}

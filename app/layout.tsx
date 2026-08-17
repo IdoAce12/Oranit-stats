@@ -1,7 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import { Assistant } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { ServiceWorkerRegister } from "./sw-register";
+import { ThemeProvider } from "./components/ThemeProvider";
 
 const assistant = Assistant({
   subsets: ["hebrew", "latin"],
@@ -38,11 +40,20 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="he" dir="rtl" className={`${assistant.variable} h-full antialiased`}>
+    <html lang="he" dir="rtl" className={`${assistant.variable} h-full antialiased`} data-theme="dark" suppressHydrationWarning>
       <body className="min-h-full flex flex-col select-none">
-        <ServiceWorkerRegister />
-        <div className="app-bg" aria-hidden />
-        {children}
+        <Script
+          id="scout-theme"
+          strategy="beforeInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('scout-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}`,
+          }}
+        />
+        <ThemeProvider>
+          <ServiceWorkerRegister />
+          <div className="app-bg" aria-hidden />
+          {children}
+        </ThemeProvider>
       </body>
     </html>
   );

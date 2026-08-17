@@ -1,5 +1,6 @@
 import { Match, MatchEvent, Player, Substitution, Zone } from "./types";
 import { scoreForEvent } from "./impactScore";
+import { xaForEvent, xgForEvent } from "./advancedMetrics";
 import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
 
 function emptyZones(): Record<Zone, number> {
@@ -22,6 +23,8 @@ export interface PlayerMatchStats {
   shotsInBox: number;
   shotsOutBox: number;
   shotsTotal: number;
+  xg: number;
+  xa: number;
   actionsTotal: number;
   score: number;
   minutesPlayed: number;
@@ -48,6 +51,8 @@ function emptyRow(player: Player | null, playerId: string | null): PlayerMatchSt
     shotsInBox: 0,
     shotsOutBox: 0,
     shotsTotal: 0,
+    xg: 0,
+    xa: 0,
     actionsTotal: 0,
     score: 0,
     minutesPlayed: 0,
@@ -103,6 +108,8 @@ export function computePlayerMatchStats(
       else row.shotsOutBox += 1;
       row.shotsTotal += 1;
     }
+    row.xg += xgForEvent(ev);
+    row.xa += xaForEvent(ev);
   }
 
   const subs = options?.substitutions ?? [];
@@ -141,6 +148,8 @@ export interface TeamMatchTotals {
   keyPasses: number;
   shotsInBox: number;
   shotsOutBox: number;
+  xg: number;
+  xa: number;
   eventsTotal: number;
 }
 
@@ -154,6 +163,8 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
   let keyPasses = 0;
   let shotsInBox = 0;
   let shotsOutBox = 0;
+  let xg = 0;
+  let xa = 0;
 
   for (const e of events) {
     if (e.action_type === "goal") goals += 1;
@@ -167,6 +178,8 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
     }
     if (e.action_type === "corner_for") cornersFor += 1;
     if (e.action_type === "corner_against") cornersAgainst += 1;
+    xg += xgForEvent(e);
+    xa += xaForEvent(e);
   }
 
   return {
@@ -179,6 +192,8 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
     keyPasses,
     shotsInBox,
     shotsOutBox,
+    xg,
+    xa,
     eventsTotal: events.length,
   };
 }

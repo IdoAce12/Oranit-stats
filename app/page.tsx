@@ -6,6 +6,8 @@ import { listMatches } from "@/lib/db";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Match } from "@/lib/types";
 import { ConfigBanner } from "./components/ConfigBanner";
+import { ThemeToggle } from "./components/ThemeToggle";
+import { PageSkeleton } from "./components/Skeleton";
 
 export default function HomePage() {
   const [matches, setMatches] = useState<Match[]>([]);
@@ -27,7 +29,7 @@ export default function HomePage() {
     <main className="relative mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-10">
       <div className="home-crest-bg" aria-hidden />
       <div className="relative z-10 flex flex-1 flex-col">
-      <div className="mb-6 flex items-center gap-3">
+      <div className="mb-6 flex w-full items-center gap-3">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/hapoel-oranit.png"
@@ -38,6 +40,9 @@ export default function HomePage() {
           <h1 className="text-xl font-extrabold leading-tight">הפועל אורנית</h1>
           <p className="text-xs text-[var(--muted)]">סקאוט · ניתוח משחק</p>
         </div>
+        <div className="ms-auto">
+          <ThemeToggle />
+        </div>
       </div>
 
       <ConfigBanner />
@@ -46,18 +51,21 @@ export default function HomePage() {
         + משחק חדש
       </Link>
 
-      <div className="mb-7 flex gap-3">
+      <div className="mb-7 grid grid-cols-3 gap-2">
         <Link href="/squad" className="btn btn-ghost flex-1 py-3 text-sm">
           הסגל שלי
         </Link>
         <Link href="/season" className="btn btn-ghost flex-1 py-3 text-sm">
           טבלה עונתית
         </Link>
+        <Link href="/season/compare" className="btn btn-ghost flex-1 py-3 text-sm">
+          השוואה
+        </Link>
       </div>
 
       <h2 className="mb-3 text-sm font-bold text-[var(--muted)]">המשחקים שלי</h2>
 
-      {loading && <p className="text-[var(--muted)]">טוען...</p>}
+      {loading && <PageSkeleton rows={4} />}
       {error && <p className="text-[var(--danger)]">{error}</p>}
       {!loading && !error && matches.length === 0 && (
         <div className="card p-6 text-center text-sm text-[var(--muted)]">

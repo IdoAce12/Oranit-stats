@@ -11,6 +11,11 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../../../components/AppHeader";
+import { PageSkeleton } from "../../../components/Skeleton";
+import { RadarProfile } from "../../../components/RadarProfile";
+import { TrendChart } from "../../../components/TrendChart";
+import { PitchHeatmap } from "../../../components/PitchHeatmap";
+import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -58,18 +63,50 @@ export default function SeasonPlayerPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const seasonRow = useMemo(() => {
-    const all = computeSeasonImpact(events, players, squad);
-    return all.find((r) => r.key === playerKey) ?? null;
-  }, [events, players, squad, playerKey]);
+  const allRows = useMemo(
+    () => computeSeasonImpact(events, players, squad),
+    [events, players, squad]
+  );
+  const seasonRow = useMemo(
+    () => allRows.find((r) => r.key === playerKey) ?? null,
+    [allRows, playerKey]
+  );
 
   const matchLines = useMemo(
     () => computePlayerSeasonMatches(playerKey, events, players, matches),
     [playerKey, events, players, matches]
   );
 
+  const radar = useMemo(
+    () => (seasonRow ? buildRadarData(seasonRow, allRows) : []),
+    [seasonRow, allRows]
+  );
+
+  const playerEvents = useMemo(() => {
+    const ids = new Set(
+      players
+        .filter((p) => (p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`) === playerKey)
+        .map((p) => p.id)
+    );
+    return events.filter((e) => e.player_id && ids.has(e.player_id));
+  }, [events, players, playerKey]);
+
+  const zoneHeat = useMemo(
+    () => ({
+      def: playerEvents.filter((e) => e.zone === "def").length,
+      mid: playerEvents.filter((e) => e.zone === "mid").length,
+      att: playerEvents.filter((e) => e.zone === "att").length,
+    }),
+    [playerEvents]
+  );
+
   if (loading) {
-    return <main className="p-8 text-center text-[var(--muted)]">טוען פרופיל...</main>;
+    return (
+      <main className="mx-auto w-full max-w-2xl px-4 pt-6">
+        <AppHeader title="פרופיל" backHref="/season" />
+        <PageSkeleton />
+      </main>
+    );
   }
 
   if (error || !seasonRow) {
@@ -90,7 +127,16 @@ export default function SeasonPlayerPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 pb-10">
-      <AppHeader title={seasonRow.label} subtitle="פרופיל עונתי" backHref="/season" />
+      <AppHeader
+        title={seasonRow.label}
+        subtitle="פרופיל עונתי"
+        backHref="/season"
+        right={
+          <button type="button" onClick={() => window.print()} className="btn btn-ghost no-print h-9 px-2 text-xs">
+            PDF
+          </button>
+        }
+      />
 
       <section className="card mb-4 p-4">
         <div className="flex items-end justify-between gap-3">
@@ -124,6 +170,13 @@ export default function SeasonPlayerPage() {
         </div>
       </section>
 
+      {radar.length > 0 && (
+        <section className="card mb-4 p-3">
+          <p className="label mb-1">פרופיל רדאר מול הקבוצה</p>
+          <RadarProfile data={radar} aLabel={seasonRow.label} />
+        </section>
+      )}
+
       <section className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
         <MiniStat label="שערים" value={seasonRow.goals} avg={avg(seasonRow.goals)} tone="accent" />
         <MiniStat label="בישולים" value={seasonRow.assists} avg={avg(seasonRow.assists)} tone="info" />
@@ -137,11 +190,9 @@ export default function SeasonPlayerPage() {
           tone="danger"
         />
         <MiniStat label="איומים רחבה" value={seasonRow.shotsInBox} avg={avg(seasonRow.shotsInBox)} />
-        <MiniStat
-          label="איומים חוץ"
-          value={seasonRow.shotsOutBox}
-          avg={avg(seasonRow.shotsOutBox)}
-        />
+        <MiniStat label="איומים חוץ" value={seasonRow.shotsOutBox} avg={avg(seasonRow.shotsOutBox)} />
+        <MiniStat label="xG" value={roundMetric(seasonRow.xg)} avg={avg(seasonRow.xg)} tone="info" />
+        <MiniStat label="xA" value={roundMetric(seasonRow.xa)} avg={avg(seasonRow.xa)} tone="info" />
       </section>
 
       <section className="card mb-4 p-3">
@@ -161,6 +212,28 @@ export default function SeasonPlayerPage() {
           </div>
         </div>
       </section>
+
+      <section className="mb-4">
+        <PitchHeatmap
+          title="מפת פעילות"
+          zones={zoneHeat}
+          shotsInBox={seasonRow.shotsInBox}
+          shotsOutBox={seasonRow.shotsOutBox}
+        />
+      </section>
+
+      {matchLines.length > 1 && (
+        <section className="card mb-4 p-3">
+          <p className="label mb-1">מגמה לאורך העונה</p>
+          <TrendChart
+            data={[...matchLines].reverse().map((l) => ({
+              label: l.opponent.slice(0, 8),
+              score: l.score,
+              xg: roundMetric(l.xg),
+            }))}
+          />
+        </section>
+      )}
 
       <h2 className="label mb-2">משחק אחר משחק</h2>
       {matchLines.length === 0 ? (

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { ReactNode } from "react";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface Props {
   title: string;
@@ -17,7 +18,7 @@ export function AppHeader({ title, subtitle, backHref, right }: Props) {
         {backHref && (
           <Link
             href={backHref}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--panel)] text-lg text-[var(--muted)] active:scale-95"
+            className="no-print flex h-9 w-9 items-center justify-center rounded-full border border-[var(--border)] bg-[var(--panel)] text-lg text-[var(--muted)] active:scale-95"
             aria-label="חזרה"
           >
             ›
@@ -28,7 +29,10 @@ export function AppHeader({ title, subtitle, backHref, right }: Props) {
         <h1 className="truncate text-lg font-extrabold">{title}</h1>
         {subtitle && <p className="truncate text-xs text-[var(--muted)]">{subtitle}</p>}
       </div>
-      <div className="flex w-16 justify-end">{right}</div>
+      <div className="flex min-w-16 items-center justify-end gap-1">
+        {right}
+        <ThemeToggle />
+      </div>
     </header>
   );
 }

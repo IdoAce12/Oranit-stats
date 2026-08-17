@@ -19,6 +19,9 @@ import { MatchEvent, Match, Player, Substitution, ZONE_LABELS } from "@/lib/type
 import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 import { PlayerCardSheet } from "./PlayerCardSheet";
+import { PageSkeleton } from "../../components/Skeleton";
+import { PitchHeatmap } from "../../components/PitchHeatmap";
+import { roundMetric } from "@/lib/advancedMetrics";
 
 export default function ReportPage() {
   const params = useParams<{ matchId: string }>();
@@ -139,7 +142,14 @@ export default function ReportPage() {
     }
   };
 
-  if (loading) return <main className="p-8 text-center text-[var(--muted)]">טוען דוח...</main>;
+  if (loading) {
+    return (
+      <main className="mx-auto w-full max-w-3xl px-4 pt-6">
+        <AppHeader title="דוח משחק" backHref="/" />
+        <PageSkeleton rows={7} />
+      </main>
+    );
+  }
 
   if (error && !match) {
     return (
@@ -162,11 +172,17 @@ export default function ReportPage() {
         subtitle={match ? new Date(match.match_date).toLocaleDateString("he-IL") : undefined}
         backHref="/"
         right={
-          isLive ? (
-            <Link href={`/live/${matchId}`} className="text-xs font-bold text-[var(--info)]">
-              חזרה ללייב
-            </Link>
-          ) : undefined
+          <div className="no-print flex items-center gap-1">
+            {isLive ? (
+              <Link href={`/live/${matchId}`} className="text-xs font-bold text-[var(--info)]">
+                חזרה ללייב
+              </Link>
+            ) : (
+              <button type="button" onClick={() => window.print()} className="btn btn-ghost h-9 px-2 text-xs">
+                PDF
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -236,13 +252,28 @@ export default function ReportPage() {
             )}
           </section>
 
-          <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <StatCard value={team.goals} label="שערים" tone="accent" />
             <StatCard value={team.assists} label="בישולים" tone="info" />
             <StatCard value={team.keyPasses} label="מסירות מפתח" tone="info" />
             <StatCard value={`${team.shotsInBox}/${team.shotsOutBox}`} label="איומים רחבה/חוץ" />
+            <StatCard value={roundMetric(team.xg)} label="xG" tone="info" />
+            <StatCard value={roundMetric(team.xa)} label="xA" tone="info" />
             <StatCard value={`${team.cornersFor}:${team.cornersAgainst}`} label="קרנות" />
             <StatCard value={team.eventsTotal} label="אירועים" />
+          </section>
+
+          <section className="mb-4">
+            <PitchHeatmap
+              title="מפת פעילות קבוצתית"
+              zones={{
+                def: team.losses.def + team.tackles.def,
+                mid: team.losses.mid + team.tackles.mid,
+                att: team.losses.att + team.tackles.att,
+              }}
+              shotsInBox={team.shotsInBox}
+              shotsOutBox={team.shotsOutBox}
+            />
           </section>
 
           {/* מפת חום אזורים */}
@@ -252,8 +283,8 @@ export default function ReportPage() {
           </section>
 
           {/* ייצוא */}
-          <section className="card mb-5 p-4">
-            <p className="label mb-2">ייצוא לאקסל</p>
+          <section className="card mb-5 p-4 no-print">
+            <p className="label mb-2">ייצוא דוח</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               {(Object.keys(EXPORT_TABLE_LABELS) as (keyof typeof EXPORT_TABLE_LABELS)[]).map((id) => (
                 <button
@@ -266,7 +297,10 @@ export default function ReportPage() {
               ))}
             </div>
             <button onClick={() => exportOne("full")} className="btn btn-primary mt-2 w-full py-3 text-sm">
-              ⬇ ייצוא מלא (כל הטבלאות)
+              ⬇ ייצוא מלא לאקסל (CSV)
+            </button>
+            <button onClick={() => window.print()} className="btn btn-ghost mt-2 w-full py-3 text-sm">
+              ייצוא PDF להדפסה
             </button>
           </section>
 
@@ -407,6 +441,18 @@ export default function ReportPage() {
             accentCol={0}
             boldLast
           />
+          <MetricTable
+            title="xG / xA"
+            exportId="shots"
+            onExport={exportOne}
+            headers={["xG", "xA", "שערים", "בישולים"]}
+            rows={playerStats}
+            sortKey={(r) => r.xg}
+            cells={(r) => [roundMetric(r.xg), roundMetric(r.xa), r.goals, r.assists]}
+            onPlayer={setCardPlayerId}
+            accentCol={0}
+            infoCol={1}
+          />
 
           <section className="mb-5">
             <h2 className="label mb-2">
@@ -502,9 +548,19 @@ function MetricTable({
   boldLast?: boolean;
   showMinutes?: boolean;
 }) {
-  const sorted = [...rows]
-    .filter((r) => r.playerId !== null)
-    .sort((a, b) => sortKey(b) - sortKey(a) || (a.shirtNumber ?? 999) - (b.shirtNumber ?? 999));
+  const [col, setCol] = useState<number | null>(null);
+  const [dir, setDir] = useState<"desc" | "asc">("desc");
+
+  const sorted = useMemo(() => {
+    const list = rows.filter((r) => r.playerId !== null);
+    return [...list].sort((a, b) => {
+      const av = col == null ? sortKey(a) : (cells(a)[col] ?? 0);
+      const bv = col == null ? sortKey(b) : (cells(b)[col] ?? 0);
+      const cmp = Number(av) - Number(bv);
+      if (cmp !== 0) return dir === "desc" ? -cmp : cmp;
+      return (a.shirtNumber ?? 999) - (b.shirtNumber ?? 999);
+    });
+  }, [rows, sortKey, cells, col, dir]);
 
   return (
     <section className="mb-4">
@@ -520,9 +576,21 @@ function MetricTable({
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[11px] text-[var(--muted)]">
                 <th className="px-3 py-2 text-right font-bold">שחקן</th>
-                {headers.map((h) => (
+                {headers.map((h, i) => (
                   <th key={h} className="px-2 py-2 font-bold">
-                    {h}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (col === i) setDir((d) => (d === "desc" ? "asc" : "desc"));
+                        else {
+                          setCol(i);
+                          setDir("desc");
+                        }
+                      }}
+                    >
+                      {h}
+                      {col === i ? (dir === "desc" ? " ↓" : " ↑") : ""}
+                    </button>
                   </th>
                 ))}
               </tr>
