@@ -101,6 +101,7 @@ export interface TeamMatchTrend {
   tackles: number;
   losses: number;
   xg: number;
+  xa: number;
   score: number;
   /** מספר מצטבר של משחקים ששוחקו עד לנקודה זו */
   matchesPlayed: number;
@@ -123,6 +124,7 @@ export function computeTeamSeasonTrend(
       tackles: 0,
       losses: 0,
       xg: 0,
+      xa: 0,
       score: 0,
       matchesPlayed: 0,
     });
@@ -136,6 +138,7 @@ export function computeTeamSeasonTrend(
     if (ev.action_type === "tackle") row.tackles += 1;
     if (ev.action_type === "ball_loss") row.losses += 1;
     row.xg += xgForEvent(ev);
+    row.xa += xaForEvent(ev);
     row.score += ev.action_type === "goal" ? 3 : ev.action_type === "assist" ? 2 : 0;
   }
   const sorted = Array.from(byMatch.values())
@@ -144,6 +147,7 @@ export function computeTeamSeasonTrend(
   sorted.forEach((r, i) => {
     r.matchesPlayed = i + 1;
     r.xg = roundMetric(r.xg);
+    r.xa = roundMetric(r.xa);
   });
   return sorted;
 }

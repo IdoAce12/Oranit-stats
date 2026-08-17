@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { RadarProfile } from "../../components/RadarProfile";
-import { TrendChart } from "../../components/TrendChart";
+import { TrendChart, TrendPoint } from "../../components/TrendChart";
 import { AppHeader } from "../../components/AppHeader";
 import { PageSkeleton } from "../../components/Skeleton";
 import { loadSeasonBundle } from "@/lib/db";
@@ -11,12 +11,46 @@ import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
   computeSeasonMinutesByKey,
+  PlayerMatchLine,
 } from "@/lib/impactScore";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { withTimeout } from "@/lib/withTimeout";
+import { COMPARE_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
 import { Match, MatchEvent, Player, SquadPlayer, Substitution } from "@/lib/types";
 
 const LOAD_TIMEOUT_MS = 12000;
+
+const COMPARE_METRICS: MetricKey[] = [
+  "score",
+  "goals",
+  "assists",
+  "keyPasses",
+  "tackles",
+  "losses",
+  "xg",
+  "xa",
+];
+
+function lineMetric(l: PlayerMatchLine, m: MetricKey): number {
+  switch (m) {
+    case "goals":
+      return l.goals;
+    case "assists":
+      return l.assists;
+    case "keyPasses":
+      return l.keyPasses;
+    case "tackles":
+      return l.tackles;
+    case "losses":
+      return l.losses;
+    case "xg":
+      return roundMetric(l.xg);
+    case "xa":
+      return roundMetric(l.xa);
+    default:
+      return roundMetric(l.score);
+  }
+}
 
 export default function ComparePage() {
   const [events, setEvents] = useState<MatchEvent[]>([]);
@@ -28,6 +62,7 @@ export default function ComparePage() {
   const [error, setError] = useState<string | null>(null);
   const [aKey, setAKey] = useState("");
   const [bKey, setBKey] = useState("");
+  const [compareMetric, setCompareMetric] = useState<MetricKey>("score");
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -58,6 +93,38 @@ export default function ComparePage() {
   const aLines = useMemo(
     () => (a ? computePlayerSeasonMatches(a.key, events, players, matches) : []),
     [a, events, players, matches]
+  );
+
+  const bLines = useMemo(
+    () => (b ? computePlayerSeasonMatches(b.key, events, players, matches) : []),
+    [b, events, players, matches]
+  );
+
+  const compareTrend = useMemo<TrendPoint[]>(() => {
+    const byMatch = new Map<string, { label: string; date: string; a?: number; b?: number }>();
+    for (const l of aLines) {
+      byMatch.set(l.matchId, {
+        label: l.opponent.slice(0, 10),
+        date: l.matchDate,
+        a: lineMetric(l, compareMetric),
+      });
+    }
+    for (const l of bLines) {
+      const cur = byMatch.get(l.matchId) ?? { label: l.opponent.slice(0, 10), date: l.matchDate };
+      cur.b = lineMetric(l, compareMetric);
+      byMatch.set(l.matchId, cur);
+    }
+    return Array.from(byMatch.values())
+      .sort((x, y) => (x.date || "").localeCompare(y.date || ""))
+      .map((p) => ({ label: p.label, a: p.a, b: p.b }));
+  }, [aLines, bLines, compareMetric]);
+
+  const compareSeries = useMemo(
+    () => [
+      { key: "a" as keyof TrendPoint, label: a?.label ?? "שחקן א׳", color: COMPARE_COLORS.a },
+      ...(b ? [{ key: "b" as keyof TrendPoint, label: b.label, color: COMPARE_COLORS.b }] : []),
+    ],
+    [a, b]
   );
 
   const minutesByKey = useMemo(
@@ -153,16 +220,21 @@ export default function ComparePage() {
             </table>
           </div>
 
-          {aLines.length > 0 && (
+          {compareTrend.length > 0 && (
             <section className="card p-3">
-              <p className="label mb-1">מגמת Impact — {a.label}</p>
-              <TrendChart
-                data={[...aLines].reverse().map((l) => ({
-                  label: l.opponent.slice(0, 8),
-                  score: l.score,
-                  xg: roundMetric(l.xg),
-                }))}
-              />
+              <p className="label mb-2">מגמת השוואה — {METRIC_LABELS[compareMetric]}</p>
+              <div className="mb-3 flex flex-wrap gap-1.5">
+                {COMPARE_METRICS.map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setCompareMetric(m)}
+                    className={`btn h-8 px-2.5 text-xs ${compareMetric === m ? "btn-primary" : "btn-ghost"}`}
+                  >
+                    {METRIC_LABELS[m]}
+                  </button>
+                ))}
+              </div>
+              <TrendChart data={compareTrend} series={compareSeries} />
             </section>
           )}
         </>

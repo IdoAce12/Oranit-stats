@@ -14,12 +14,16 @@ export interface TrendPoint {
   label: string;
   score?: number;
   xg?: number;
+  xa?: number;
   goals?: number;
   assists?: number;
   keyPasses?: number;
   tackles?: number;
   losses?: number;
   matchesPlayed?: number;
+  /** ערכים להשוואה בין שני שחקנים */
+  a?: number;
+  b?: number;
 }
 
 interface Props {

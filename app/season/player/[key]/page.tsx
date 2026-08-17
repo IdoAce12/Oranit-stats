@@ -13,9 +13,21 @@ import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../../../components/AppHeader";
 import { PageSkeleton } from "../../../components/Skeleton";
 import { RadarProfile } from "../../../components/RadarProfile";
-import { TrendChart } from "../../../components/TrendChart";
+import { TrendChart, TrendPoint } from "../../../components/TrendChart";
 import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
 import { withTimeout } from "@/lib/withTimeout";
+import { METRIC_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
+
+const PLAYER_TREND_METRICS: MetricKey[] = [
+  "score",
+  "goals",
+  "assists",
+  "keyPasses",
+  "tackles",
+  "losses",
+  "xg",
+  "xa",
+];
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -29,6 +41,7 @@ export default function SeasonPlayerPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [trendMetric, setTrendMetric] = useState<MetricKey>("score");
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -64,6 +77,33 @@ export default function SeasonPlayerPage() {
   const radar = useMemo(
     () => (seasonRow ? buildRadarData(seasonRow, allRows) : []),
     [seasonRow, allRows]
+  );
+
+  const trendData = useMemo<TrendPoint[]>(
+    () =>
+      [...matchLines].reverse().map((l) => ({
+        label: l.opponent.slice(0, 10),
+        score: roundMetric(l.score),
+        goals: l.goals,
+        assists: l.assists,
+        keyPasses: l.keyPasses,
+        tackles: l.tackles,
+        losses: l.losses,
+        xg: roundMetric(l.xg),
+        xa: roundMetric(l.xa),
+      })),
+    [matchLines]
+  );
+
+  const trendSeries = useMemo(
+    () => [
+      {
+        key: trendMetric as keyof TrendPoint,
+        label: METRIC_LABELS[trendMetric],
+        color: METRIC_COLORS[trendMetric],
+      },
+    ],
+    [trendMetric]
   );
 
   if (loading) {
@@ -181,14 +221,19 @@ export default function SeasonPlayerPage() {
 
       {matchLines.length > 1 && (
         <section className="card mb-4 p-3">
-          <p className="label mb-1">מגמה לאורך העונה</p>
-          <TrendChart
-            data={[...matchLines].reverse().map((l) => ({
-              label: l.opponent.slice(0, 8),
-              score: l.score,
-              xg: roundMetric(l.xg),
-            }))}
-          />
+          <p className="label mb-2">מגמה לאורך העונה — {METRIC_LABELS[trendMetric]}</p>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {PLAYER_TREND_METRICS.map((m) => (
+              <button
+                key={m}
+                onClick={() => setTrendMetric(m)}
+                className={`btn h-8 px-2.5 text-xs ${trendMetric === m ? "btn-primary" : "btn-ghost"}`}
+              >
+                {METRIC_LABELS[m]}
+              </button>
+            ))}
+          </div>
+          <TrendChart data={trendData} series={trendSeries} />
         </section>
       )}
 

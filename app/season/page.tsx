@@ -13,17 +13,7 @@ import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 import { PageSkeleton } from "../components/Skeleton";
 import { TrendChart, TrendPoint } from "../components/TrendChart";
-
-type TrendMetric = "goals" | "assists" | "keyPasses" | "tackles" | "losses" | "matchesPlayed";
-
-const TREND_METRICS: { key: TrendMetric; label: string; color: string }[] = [
-  { key: "goals", label: "שערים", color: "#34d399" },
-  { key: "assists", label: "בישולים", color: "#60a5fa" },
-  { key: "keyPasses", label: "מסירות מפתח", color: "#818cf8" },
-  { key: "tackles", label: "חילוצים", color: "#2dd4bf" },
-  { key: "losses", label: "איבודים", color: "#f87171" },
-  { key: "matchesPlayed", label: "משחקים", color: "#fbbf24" },
-];
+import { METRIC_COLORS, METRIC_LABELS } from "@/lib/trendMetrics";
 
 type SortKey =
   | "score"
@@ -36,6 +26,33 @@ type SortKey =
   | "xg"
   | "xa"
   | "matchesPlayed";
+
+/** מדד יחיד ששולט גם במיון הרשימה וגם בגרף המגמה. */
+const SORT_META: Record<SortKey, { label: string; color: string; trendKey: keyof TrendPoint }> = {
+  score: { label: METRIC_LABELS.score, color: METRIC_COLORS.score, trendKey: "score" },
+  perMatch: { label: METRIC_LABELS.perMatch, color: METRIC_COLORS.perMatch, trendKey: "score" },
+  goals: { label: METRIC_LABELS.goals, color: METRIC_COLORS.goals, trendKey: "goals" },
+  assists: { label: METRIC_LABELS.assists, color: METRIC_COLORS.assists, trendKey: "assists" },
+  keyPasses: { label: "מס״מ", color: METRIC_COLORS.keyPasses, trendKey: "keyPasses" },
+  tackles: { label: METRIC_LABELS.tackles, color: METRIC_COLORS.tackles, trendKey: "tackles" },
+  lossesTotal: { label: METRIC_LABELS.losses, color: METRIC_COLORS.losses, trendKey: "losses" },
+  xg: { label: METRIC_LABELS.xg, color: METRIC_COLORS.xg, trendKey: "xg" },
+  xa: { label: METRIC_LABELS.xa, color: METRIC_COLORS.xa, trendKey: "xa" },
+  matchesPlayed: { label: METRIC_LABELS.matchesPlayed, color: METRIC_COLORS.matchesPlayed, trendKey: "matchesPlayed" },
+};
+
+const METRIC_ORDER: SortKey[] = [
+  "score",
+  "perMatch",
+  "goals",
+  "assists",
+  "keyPasses",
+  "tackles",
+  "lossesTotal",
+  "xg",
+  "xa",
+  "matchesPlayed",
+];
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -55,7 +72,6 @@ export default function SeasonPage() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [view, setView] = useState<"cards" | "table">("cards");
   const [query, setQuery] = useState("");
-  const [trendMetric, setTrendMetric] = useState<TrendMetric>("goals");
 
   const load = () => {
     if (!isSupabaseConfigured) {
@@ -106,20 +122,23 @@ export default function SeasonPage() {
     () =>
       computeTeamSeasonTrend(events, matches).map((m) => ({
         label: m.opponent.slice(0, 10),
+        score: m.score,
         goals: m.goals,
         assists: m.assists,
         keyPasses: m.keyPasses,
         tackles: m.tackles,
         losses: m.losses,
+        xg: m.xg,
+        xa: m.xa,
         matchesPlayed: m.matchesPlayed,
       })),
     [events, matches]
   );
 
   const trendSeries = useMemo(() => {
-    const m = TREND_METRICS.find((x) => x.key === trendMetric) ?? TREND_METRICS[0];
-    return [{ key: m.key, label: m.label, color: m.color }];
-  }, [trendMetric]);
+    const meta = SORT_META[sortKey];
+    return [{ key: meta.trendKey, label: meta.label, color: meta.color }];
+  }, [sortKey]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -176,27 +195,18 @@ export default function SeasonPage() {
         className="field mb-3 w-full"
       />
 
+      <p className="mb-1.5 text-[11px] text-[var(--muted-2)]">
+        בחר מדד — משפיע גם על המגמה למעלה וגם על מיון השחקנים למטה
+      </p>
       <div className="mb-3 flex flex-wrap gap-1.5">
-        {(
-          [
-            ["score", "ציון"],
-            ["perMatch", "ממוצע"],
-            ["goals", "שערים"],
-            ["assists", "בישולים"],
-            ["keyPasses", "מס״מ"],
-            ["tackles", "חילוצים"],
-            ["lossesTotal", "איבודים"],
-            ["xg", "xG"],
-            ["xa", "xA"],
-            ["matchesPlayed", "משחקים"],
-          ] as [SortKey, string][]
-        ).map(([k, label]) => (
+        {METRIC_ORDER.map((k) => (
           <button
             key={k}
             onClick={() => toggleSort(k)}
             className={`btn h-8 px-2.5 text-xs ${sortKey === k ? "btn-primary" : "btn-ghost"}`}
           >
-            {label}
+            {SORT_META[k].label}
+            {sortKey === k ? (sortDir === "desc" ? " ↓" : " ↑") : ""}
           </button>
         ))}
       </div>
@@ -224,18 +234,7 @@ export default function SeasonPage() {
 
       {!loading && rows.length > 0 && teamTrend.length > 1 && (
         <section className="card mb-4 p-3">
-          <p className="label mb-2">מגמת קבוצה לאורך העונה</p>
-          <div className="mb-3 flex flex-wrap gap-1.5">
-            {TREND_METRICS.map((m) => (
-              <button
-                key={m.key}
-                onClick={() => setTrendMetric(m.key)}
-                className={`btn h-8 px-2.5 text-xs ${trendMetric === m.key ? "btn-primary" : "btn-ghost"}`}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
+          <p className="label mb-2">מגמת קבוצה לאורך העונה — {SORT_META[sortKey].label}</p>
           <TrendChart data={teamTrend} series={trendSeries} />
         </section>
       )}
