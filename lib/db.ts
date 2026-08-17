@@ -332,10 +332,11 @@ export async function loadSeasonBundle(): Promise<{
   players: Player[];
   squad: SquadPlayer[];
   matches: Match[];
+  substitutions: Substitution[];
   matchesCount: number;
 }> {
   const supabase = requireClient();
-  const [evRes, plRes, sqRes, mRes] = await Promise.all([
+  const [evRes, plRes, sqRes, mRes, subRes] = await Promise.all([
     supabase
       .from("events")
       .select("id,match_id,player_id,action_type,zone,shot_location,half,match_minute,created_at")
@@ -353,6 +354,10 @@ export async function loadSeasonBundle(): Promise<{
       .select("id,opponent,match_date,our_team_name,status,ended_at,created_at,notes,final_half,final_minute")
       .order("match_date", { ascending: false })
       .limit(2000),
+    supabase
+      .from("substitutions")
+      .select("id,match_id,player_out_id,player_in_id,half,match_minute,created_at")
+      .limit(10000),
   ]);
   if (evRes.error) throw new Error(evRes.error.message);
   if (plRes.error) throw new Error(plRes.error.message);
@@ -364,6 +369,8 @@ export async function loadSeasonBundle(): Promise<{
     players: (plRes.data ?? []) as Player[],
     squad: (sqRes.data ?? []) as SquadPlayer[],
     matches,
+    // חילופים אופציונליים — אם הטבלה חסרה, לא מפילים את כל העונה
+    substitutions: subRes.error ? [] : ((subRes.data ?? []) as Substitution[]),
     matchesCount: matches.length,
   };
 }

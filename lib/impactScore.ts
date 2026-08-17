@@ -1,5 +1,6 @@
-import { ActionType, MatchEvent, Player, SquadPlayer, Zone } from "./types";
+import { ActionType, Match, MatchEvent, Player, SquadPlayer, Substitution, Zone } from "./types";
 import { xaForEvent, xgForEvent } from "./advancedMetrics";
+import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
 
 // =============================================================
 // משקולות ה-Impact Score - כאן מכיילים אחרי כמה משחקים.
@@ -245,6 +246,62 @@ export function computeSeasonImpact(
   }
 
   return Array.from(acc.values()).sort((a, b) => b.score - a.score);
+}
+
+/**
+ * סך דקות המשחק לכל שחקן עונתי (לפי מפתח סגל), מסוכם מכל המשחקים.
+ * מחשב דקות לכל משחק בנפרד עם ההרכב, החילופים וזמן הסיום של אותו משחק.
+ */
+export function computeSeasonMinutesByKey(
+  players: Player[],
+  substitutions: Substitution[],
+  matches: Match[],
+  events: MatchEvent[]
+): Map<string, number> {
+  const keyOf = (p: Player) =>
+    p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
+
+  const matchById = new Map(matches.map((m) => [m.id, m]));
+
+  const playersByMatch = new Map<string, Player[]>();
+  for (const p of players) {
+    const list = playersByMatch.get(p.match_id) ?? [];
+    list.push(p);
+    playersByMatch.set(p.match_id, list);
+  }
+
+  const subsByMatch = new Map<string, Substitution[]>();
+  for (const s of substitutions) {
+    const list = subsByMatch.get(s.match_id) ?? [];
+    list.push(s);
+    subsByMatch.set(s.match_id, list);
+  }
+
+  const eventsMaxByMatch = new Map<string, number>();
+  for (const e of events) {
+    const cur = eventsMaxByMatch.get(e.match_id) ?? 0;
+    if (e.match_minute > cur) eventsMaxByMatch.set(e.match_id, e.match_minute);
+  }
+
+  const totals = new Map<string, number>();
+  for (const [matchId, matchPlayers] of playersByMatch) {
+    const matchSubs = subsByMatch.get(matchId) ?? [];
+    const match = matchById.get(matchId) ?? null;
+    const finalMinute = resolveFinalMinute(
+      match,
+      matchSubs,
+      eventsMaxByMatch.get(matchId) ?? 0
+    );
+    const minutes = computePlayingMinutes(matchPlayers, matchSubs, finalMinute);
+    const byId = new Map(matchPlayers.map((p) => [p.id, p]));
+    for (const [pid, mm] of minutes) {
+      const p = byId.get(pid);
+      if (!p) continue;
+      const key = keyOf(p);
+      totals.set(key, (totals.get(key) ?? 0) + mm.minutesPlayed);
+    }
+  }
+  return totals;
 }
 
 export interface PlayerMatchLine {

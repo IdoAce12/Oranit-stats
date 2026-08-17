@@ -11,9 +11,10 @@ import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
 import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
+  computeSeasonMinutesByKey,
 } from "@/lib/impactScore";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
+import { Match, MatchEvent, Player, SquadPlayer, Substitution } from "@/lib/types";
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -38,6 +39,7 @@ export default function ComparePage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [subs, setSubs] = useState<Substitution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [aKey, setAKey] = useState("");
@@ -55,6 +57,7 @@ export default function ComparePage() {
         setPlayers(bundle.players);
         setSquad(bundle.squad);
         setMatches(bundle.matches);
+        setSubs(bundle.substitutions);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "שגיאה"))
       .finally(() => setLoading(false));
@@ -72,6 +75,13 @@ export default function ComparePage() {
     () => (a ? computePlayerSeasonMatches(a.key, events, players, matches) : []),
     [a, events, players, matches]
   );
+
+  const minutesByKey = useMemo(
+    () => computeSeasonMinutesByKey(players, subs, matches, events),
+    [players, subs, matches, events]
+  );
+  const aMinutes = a ? minutesByKey.get(a.key) ?? 0 : 0;
+  const bMinutes = b ? minutesByKey.get(b.key) ?? 0 : 0;
 
   if (loading) {
     return (
@@ -138,6 +148,7 @@ export default function ComparePage() {
                 {(
                   [
                     ["משחקים", a.matchesPlayed, b?.matchesPlayed],
+                    ["דקות (עונה)", `${aMinutes}׳`, b ? `${bMinutes}׳` : null],
                     ["שערים", a.goals, b?.goals],
                     ["בישולים", a.assists, b?.assists],
                     ["מס״מ", a.keyPasses, b?.keyPasses],
