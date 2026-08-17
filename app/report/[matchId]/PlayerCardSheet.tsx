@@ -22,11 +22,11 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6"
+      className="sheet-overlay fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6"
       onClick={onClose}
     >
       <div
-        className="sheet max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[var(--bg)] p-4 pb-8 sm:rounded-3xl sm:border"
+        className="sheet-panel sheet max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-3xl border-t border-[var(--border-strong)] bg-[var(--bg)] p-4 pb-8 sm:rounded-3xl sm:border"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-start justify-between gap-3">
@@ -42,9 +42,14 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
               {stats.minutesLabel || `${stats.minutesPlayed}׳`} · {stats.actionsTotal} פעולות
             </p>
           </div>
-          <button onClick={onClose} className="btn btn-ghost h-9 shrink-0 px-3 text-sm">
-            סגור
-          </button>
+          <div className="no-print flex shrink-0 items-center gap-1.5">
+            <button onClick={() => window.print()} className="btn btn-ghost h-9 px-3 text-sm">
+              PDF
+            </button>
+            <button onClick={onClose} className="btn btn-ghost h-9 px-3 text-sm">
+              סגור
+            </button>
+          </div>
         </div>
 
         <div className="mb-3 grid grid-cols-3 gap-2">

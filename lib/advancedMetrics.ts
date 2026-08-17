@@ -96,10 +96,14 @@ export interface TeamMatchTrend {
   matchDate: string;
   label: string;
   goals: number;
-  xg: number;
+  assists: number;
+  keyPasses: number;
   tackles: number;
   losses: number;
+  xg: number;
   score: number;
+  /** מספר מצטבר של משחקים ששוחקו עד לנקודה זו */
+  matchesPlayed: number;
 }
 
 export function computeTeamSeasonTrend(
@@ -114,24 +118,34 @@ export function computeTeamSeasonTrend(
       matchDate: m.match_date,
       label: m.opponent,
       goals: 0,
-      xg: 0,
+      assists: 0,
+      keyPasses: 0,
       tackles: 0,
       losses: 0,
+      xg: 0,
       score: 0,
+      matchesPlayed: 0,
     });
   }
   for (const ev of events) {
     const row = byMatch.get(ev.match_id);
     if (!row) continue;
     if (ev.action_type === "goal") row.goals += 1;
+    if (ev.action_type === "assist") row.assists += 1;
+    if (ev.action_type === "key_pass") row.keyPasses += 1;
     if (ev.action_type === "tackle") row.tackles += 1;
     if (ev.action_type === "ball_loss") row.losses += 1;
     row.xg += xgForEvent(ev);
     row.score += ev.action_type === "goal" ? 3 : ev.action_type === "assist" ? 2 : 0;
   }
-  return Array.from(byMatch.values())
+  const sorted = Array.from(byMatch.values())
     .filter((r) => r.matchDate)
     .sort((a, b) => a.matchDate.localeCompare(b.matchDate));
+  sorted.forEach((r, i) => {
+    r.matchesPlayed = i + 1;
+    r.xg = roundMetric(r.xg);
+  });
+  return sorted;
 }
 
 export function roundMetric(n: number, digits = 2): number {

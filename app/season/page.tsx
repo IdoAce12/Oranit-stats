@@ -11,7 +11,18 @@ import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 import { PageSkeleton } from "../components/Skeleton";
-import { TrendChart } from "../components/TrendChart";
+import { TrendChart, TrendPoint } from "../components/TrendChart";
+
+type TrendMetric = "goals" | "assists" | "keyPasses" | "tackles" | "losses" | "matchesPlayed";
+
+const TREND_METRICS: { key: TrendMetric; label: string; color: string }[] = [
+  { key: "goals", label: "שערים", color: "#34d399" },
+  { key: "assists", label: "בישולים", color: "#60a5fa" },
+  { key: "keyPasses", label: "מסירות מפתח", color: "#818cf8" },
+  { key: "tackles", label: "חילוצים", color: "#2dd4bf" },
+  { key: "losses", label: "איבודים", color: "#f87171" },
+  { key: "matchesPlayed", label: "משחקים", color: "#fbbf24" },
+];
 
 type SortKey =
   | "score"
@@ -59,6 +70,7 @@ export default function SeasonPage() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [view, setView] = useState<"cards" | "table">("cards");
   const [query, setQuery] = useState("");
+  const [trendMetric, setTrendMetric] = useState<TrendMetric>("goals");
 
   const load = () => {
     if (!isSupabaseConfigured) {
@@ -96,25 +108,33 @@ export default function SeasonPage() {
             r.label.toLowerCase().includes(q) || String(r.shirtNumber ?? "").includes(q)
         )
       : list;
-    const dir = sortDir === "desc" ? -1 : 1;
     return [...filtered].sort((a, b) => {
       const av = sortValue(a, sortKey);
       const bv = sortValue(b, sortKey);
       if (av === bv) return a.label.localeCompare(b.label, "he");
-      return av > bv ? -dir : dir;
+      const cmp = av - bv;
+      return sortDir === "desc" ? -cmp : cmp;
     });
   }, [events, players, squad, sortKey, sortDir, query]);
 
-  const teamTrend = useMemo(
+  const teamTrend = useMemo<TrendPoint[]>(
     () =>
       computeTeamSeasonTrend(events, matches).map((m) => ({
-        label: m.opponent.slice(0, 8),
-        score: m.goals,
-        xg: roundMetric(m.xg),
+        label: m.opponent.slice(0, 10),
+        goals: m.goals,
+        assists: m.assists,
+        keyPasses: m.keyPasses,
         tackles: m.tackles,
+        losses: m.losses,
+        matchesPlayed: m.matchesPlayed,
       })),
     [events, matches]
   );
+
+  const trendSeries = useMemo(() => {
+    const m = TREND_METRICS.find((x) => x.key === trendMetric) ?? TREND_METRICS[0];
+    return [{ key: m.key, label: m.label, color: m.color }];
+  }, [trendMetric]);
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === "desc" ? "asc" : "desc"));
@@ -219,14 +239,19 @@ export default function SeasonPage() {
 
       {!loading && rows.length > 0 && teamTrend.length > 1 && (
         <section className="card mb-4 p-3">
-          <p className="label mb-1">מגמת קבוצה לאורך העונה</p>
-          <TrendChart
-            data={teamTrend}
-            series={[
-              { key: "score", label: "שערים", color: "#34d399" },
-              { key: "xg", label: "xG", color: "#60a5fa" },
-            ]}
-          />
+          <p className="label mb-2">מגמת קבוצה לאורך העונה</p>
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {TREND_METRICS.map((m) => (
+              <button
+                key={m.key}
+                onClick={() => setTrendMetric(m.key)}
+                className={`btn h-8 px-2.5 text-xs ${trendMetric === m.key ? "btn-primary" : "btn-ghost"}`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+          <TrendChart data={teamTrend} series={trendSeries} />
         </section>
       )}
 

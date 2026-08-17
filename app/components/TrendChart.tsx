@@ -15,7 +15,11 @@ export interface TrendPoint {
   score?: number;
   xg?: number;
   goals?: number;
+  assists?: number;
+  keyPasses?: number;
   tackles?: number;
+  losses?: number;
+  matchesPlayed?: number;
 }
 
 interface Props {

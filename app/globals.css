@@ -197,18 +197,106 @@ button {
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 12mm;
+  }
+
+  /* צבעים קריאים על נייר לבן — דורסים את משתני הערכת נושא הכהה */
+  :root,
+  html[data-theme="dark"],
+  html[data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #ffffff;
+    --panel-strong: #f1f5f9;
+    --border: #cbd5e1;
+    --border-strong: #94a3b8;
+    --text: #0f172a;
+    --muted: #334155;
+    --muted-2: #64748b;
+    --accent: #047857;
+    --accent-strong: #065f46;
+    --danger: #b91c1c;
+    --warn: #b45309;
+    --info: #1d4ed8;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #0f172a !important;
+  }
+
   .app-bg,
   .home-crest-bg,
   .no-print {
     display: none !important;
   }
-  body {
-    background: #fff !important;
-    color: #111 !important;
+
+  main {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
   }
+
+  section,
+  table,
+  tr,
+  li {
+    break-inside: avoid;
+  }
+
   .card {
     break-inside: avoid;
-    box-shadow: none;
-    border: 1px solid #d4d4d8;
+    box-shadow: none !important;
+    border: 1px solid #cbd5e1 !important;
+    background: #fff !important;
+    border-radius: 12px;
+  }
+
+  table {
+    width: 100% !important;
+    font-size: 11px !important;
+  }
+  th,
+  td {
+    color: #0f172a !important;
+  }
+
+  /* טקסט עמום צריך להישאר קריא בהדפסה */
+  .text-\[var\(--muted\)\],
+  .text-\[var\(--muted-2\)\] {
+    color: #475569 !important;
+  }
+
+  /* כרטיס שחקן פתוח — מדפיסים רק אותו, בלי הרקע הכהה */
+  body:has(.sheet-overlay) main > *:not(.sheet-overlay) {
+    display: none !important;
+  }
+  .sheet-overlay {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    padding: 0 !important;
+    background: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+  .sheet-panel {
+    max-height: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow: visible !important;
+    border: none !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    animation: none !important;
   }
 }
