@@ -1,5 +1,5 @@
 import { ActionType, Match, MatchEvent, Player, SquadPlayer, Substitution, Zone } from "./types";
-import { xaForEvent, xgForEvent } from "./advancedMetrics";
+import { roundMetric, xaForEvent, xgForEvent } from "./advancedMetrics";
 import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
 
 // =============================================================
@@ -242,6 +242,8 @@ export function computeSeasonImpact(
     if (entry) {
       entry.matchesPlayed = matches.size;
       entry.perMatch = matches.size > 0 ? entry.score / matches.size : 0;
+      entry.xg = roundMetric(entry.xg);
+      entry.xa = roundMetric(entry.xa);
     }
   }
 
@@ -374,7 +376,7 @@ export function computePlayerSeasonMatches(
     line.xa += xaForEvent(ev);
   }
 
-  return Array.from(byMatch.values()).sort((a, b) =>
-    (b.matchDate || "").localeCompare(a.matchDate || "")
-  );
+  return Array.from(byMatch.values())
+    .map((l) => ({ ...l, xg: roundMetric(l.xg), xa: roundMetric(l.xa) }))
+    .sort((a, b) => (b.matchDate || "").localeCompare(a.matchDate || ""));
 }

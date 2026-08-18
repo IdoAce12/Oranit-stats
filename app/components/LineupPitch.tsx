@@ -21,7 +21,20 @@ export function LineupPitch({
   disabled = false,
 }: Props) {
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-white/15 bg-gradient-to-b from-[#0a1433] via-[#07102c] to-[#050918] shadow-[0_16px_40px_-18px_rgba(8,24,90,0.85)]">
+    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-white/15 bg-gradient-to-b from-[#0c3a24] via-[#0a2f1e] to-[#071f14] shadow-[0_16px_40px_-18px_rgba(8,24,90,0.85)]">
+      {/* פסי דשא כמו מגרש מכוסח */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            "repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0 10%, rgba(0,0,0,0.06) 10% 20%)",
+        }}
+      />
+      {/* גוון כחול עדין של המועדון מעל הדשא */}
+      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1433]/45 via-transparent to-[#050918]/55" />
+      {/* וינייטה לעומק */}
+      <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
+
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/hapoel-oranit.png"
@@ -60,12 +73,12 @@ export function LineupPitch({
             aria-label={player ? `#${player.shirt_number} ${player.name}` : node.label}
           >
             <span
-              className={`flex h-11 w-11 items-center justify-center rounded-full border-2 text-lg font-black tabular shadow-[0_6px_16px_rgba(0,0,0,0.45)] transition ${
+              className={`flex h-12 w-12 items-center justify-center rounded-xl border-2 text-lg font-black tabular shadow-[0_10px_18px_-4px_rgba(0,0,0,0.75)] transition ${
                 lit
-                  ? "scale-110 border-amber-300 bg-amber-400 text-[#241a00] shadow-[0_0_18px_rgba(251,191,36,0.65)]"
+                  ? "scale-110 border-amber-300 bg-amber-400 text-[#241a00] shadow-[0_0_20px_rgba(251,191,36,0.7)]"
                   : player
-                    ? "border-white bg-[#0a246b] text-white"
-                    : "border-dashed border-white/55 bg-[#0a246b]/55 text-white/70"
+                    ? "border-white/90 bg-gradient-to-b from-[#123a9e] to-[#0a1f5c] text-white"
+                    : "border-dashed border-white/50 bg-[#0a246b]/45 text-white/70"
               }`}
             >
               {player ? player.shirt_number : "·"}

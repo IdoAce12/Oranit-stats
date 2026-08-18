@@ -104,6 +104,19 @@ describe("computeSeasonImpact", () => {
     expect(rows[rows.length - 1].key).toBe("sq:s1");
   });
 
+  it("מעגל xG/xA לשתי ספרות (בלי שאריות נקודה צפה)", () => {
+    const squad = [makeSquadPlayer({ id: "s1", name: "חלוץ" })];
+    const players = [makePlayer({ id: "p1", squad_player_id: "s1", name: "חלוץ" })];
+    const events = [
+      action("p1", "shot", { shot_location: "in_box" }),
+      action("p1", "shot", { shot_location: "in_box" }),
+      action("p1", "shot", { shot_location: "out_box" }),
+      action("p1", "shot", { shot_location: "out_box" }),
+    ];
+    const row = computeSeasonImpact(events, players, squad)[0];
+    expect(row.xg).toBe(0.64);
+  });
+
   it("מפצל איבודים לפי אזור", () => {
     const squad = [makeSquadPlayer({ id: "s1", name: "בלם" })];
     const players = [makePlayer({ id: "p1", squad_player_id: "s1", name: "בלם" })];
