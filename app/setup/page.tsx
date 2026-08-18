@@ -10,7 +10,7 @@ import { addPlayers, createMatch, listSquad } from "@/lib/db";
 import { LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { SquadPlayer } from "@/lib/types";
+import { MATCH_TYPE_FULL_LABELS, MATCH_TYPE_ORDER, MatchType, SquadPlayer } from "@/lib/types";
 
 type Step = 1 | 2 | 3;
 
@@ -28,6 +28,7 @@ export default function SetupPage() {
   const [opponent, setOpponent] = useState("");
   const [matchDate, setMatchDate] = useState(today);
   const [teamName, setTeamName] = useState("");
+  const [matchType, setMatchType] = useState<MatchType>("league");
 
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [sel, setSel] = useState<Record<string, Selection>>({});
@@ -223,6 +224,7 @@ export default function SetupPage() {
         opponent: opponent.trim(),
         match_date: matchDate,
         our_team_name: teamName.trim(),
+        match_type: matchType,
       });
       await addPlayers(match.id, chosen);
       router.push(`/live/${match.id}`);
@@ -230,6 +232,8 @@ export default function SetupPage() {
       const msg = e instanceof Error ? e.message : "שגיאה בשמירה";
       if (/lineup_slot/i.test(msg)) {
         setError("חסרה עמודת הרכב ב-Supabase — הרץ את db/migration_v6.sql");
+      } else if (/match_type/i.test(msg)) {
+        setError("חסרה עמודת סוג משחק ב-Supabase — הרץ את db/migration_v7.sql");
       } else {
         setError(msg);
       }
@@ -306,6 +310,21 @@ export default function SetupPage() {
                   className="field w-full"
                 />
               </label>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="label">סוג משחק</span>
+              <div className="grid grid-cols-3 gap-2">
+                {MATCH_TYPE_ORDER.map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setMatchType(t)}
+                    className={`btn h-10 text-sm ${matchType === t ? "btn-primary" : "btn-ghost"}`}
+                  >
+                    {MATCH_TYPE_FULL_LABELS[t]}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 

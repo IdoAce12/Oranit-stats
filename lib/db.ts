@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabaseClient";
-import { Half, Match, MatchEvent, Player, SquadPlayer, Substitution } from "./types";
+import { Half, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "./types";
 
 export class SupabaseNotConfiguredError extends Error {
   constructor() {
@@ -86,6 +86,7 @@ export async function createMatch(input: {
   opponent: string;
   match_date: string;
   our_team_name: string;
+  match_type?: MatchType;
 }): Promise<Match> {
   const supabase = requireClient();
   const { data, error } = await supabase
@@ -94,6 +95,7 @@ export async function createMatch(input: {
       opponent: input.opponent,
       match_date: input.match_date,
       our_team_name: input.our_team_name,
+      match_type: input.match_type ?? "league",
       status: "live",
     })
     .select()
@@ -351,7 +353,7 @@ export async function loadSeasonBundle(): Promise<{
       .order("shirt_number", { ascending: true }),
     supabase
       .from("matches")
-      .select("id,opponent,match_date,our_team_name,status,ended_at,created_at,notes,final_half,final_minute")
+      .select("id,opponent,match_date,our_team_name,status,match_type,ended_at,created_at,notes,final_half,final_minute")
       .order("match_date", { ascending: false })
       .limit(2000),
     supabase

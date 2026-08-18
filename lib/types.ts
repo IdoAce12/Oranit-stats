@@ -16,6 +16,9 @@ export type Half = 1 | 2;
 
 export type MatchStatus = "live" | "finished";
 
+// סוג משחק — לסיווג וסינון בטבלאות
+export type MatchType = "league" | "cup" | "friendly";
+
 // שחקן בסגל הקבוע של הקבוצה (לא קשור למשחק)
 export interface SquadPlayer {
   id: string;
@@ -32,6 +35,7 @@ export interface Match {
   match_date: string;
   our_team_name: string;
   status: MatchStatus;
+  match_type: MatchType;
   ended_at: string | null;
   created_at: string;
   notes?: string;
@@ -93,6 +97,23 @@ export interface EventRow {
 export interface LiveEvent extends EventRow {
   synced: boolean;
 }
+
+// תוויות סוג משחק (קצר — לצ׳יפים ולסינון)
+export const MATCH_TYPE_LABELS: Record<MatchType, string> = {
+  league: "ליגה",
+  cup: "גביע",
+  friendly: "אימון",
+};
+
+// תוויות מלאות — לבחירה במסך יצירת המשחק
+export const MATCH_TYPE_FULL_LABELS: Record<MatchType, string> = {
+  league: "משחק ליגה",
+  cup: "גביע המדינה",
+  friendly: "משחק אימון",
+};
+
+// סדר קבוע להצגה
+export const MATCH_TYPE_ORDER: MatchType[] = ["league", "cup", "friendly"];
 
 export const ACTION_LABELS: Record<ActionType, string> = {
   ball_loss: "איבוד כדור",

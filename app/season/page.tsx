@@ -8,7 +8,15 @@ import { computeSeasonImpact, SeasonImpact } from "@/lib/impactScore";
 import { computeTeamSeasonTrend, roundMetric } from "@/lib/advancedMetrics";
 import { withTimeout } from "@/lib/withTimeout";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
+import {
+  MATCH_TYPE_LABELS,
+  MATCH_TYPE_ORDER,
+  Match,
+  MatchEvent,
+  MatchType,
+  Player,
+  SquadPlayer,
+} from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 import { PageSkeleton } from "../components/Skeleton";
@@ -72,6 +80,7 @@ export default function SeasonPage() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [view, setView] = useState<"cards" | "table">("cards");
   const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState<MatchType | "all">("all");
 
   const load = () => {
     if (!isSupabaseConfigured) {
@@ -94,8 +103,35 @@ export default function SeasonPage() {
 
   useEffect(load, []);
 
+  // סינון לפי סוג משחק — מצמצמים אירועים/שחקנים/משחקים למשחקים מהסוג שנבחר
+  const allowedMatchIds = useMemo(() => {
+    if (typeFilter === "all") return null;
+    return new Set(
+      matches.filter((m) => (m.match_type ?? "league") === typeFilter).map((m) => m.id)
+    );
+  }, [matches, typeFilter]);
+
+  const filteredMatches = useMemo(
+    () => (allowedMatchIds ? matches.filter((m) => allowedMatchIds.has(m.id)) : matches),
+    [matches, allowedMatchIds]
+  );
+  const filteredEvents = useMemo(
+    () => (allowedMatchIds ? events.filter((e) => allowedMatchIds.has(e.match_id)) : events),
+    [events, allowedMatchIds]
+  );
+  const filteredPlayers = useMemo(
+    () => (allowedMatchIds ? players.filter((p) => allowedMatchIds.has(p.match_id)) : players),
+    [players, allowedMatchIds]
+  );
+
+  const typeCounts = useMemo(() => {
+    const counts: Record<MatchType, number> = { league: 0, cup: 0, friendly: 0 };
+    for (const m of matches) counts[m.match_type ?? "league"] += 1;
+    return counts;
+  }, [matches]);
+
   const rows = useMemo(() => {
-    const base = computeSeasonImpact(events, players, squad);
+    const base = computeSeasonImpact(filteredEvents, filteredPlayers, squad);
     const withActivity = base.filter(
       (r) =>
         r.score !== 0 ||
@@ -116,11 +152,11 @@ export default function SeasonPage() {
       const cmp = av - bv;
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [events, players, squad, sortKey, sortDir, query]);
+  }, [filteredEvents, filteredPlayers, squad, sortKey, sortDir, query]);
 
   const teamTrend = useMemo<TrendPoint[]>(
     () =>
-      computeTeamSeasonTrend(events, matches).map((m) => ({
+      computeTeamSeasonTrend(filteredEvents, filteredMatches).map((m) => ({
         label: m.opponent.slice(0, 10),
         score: m.score,
         goals: m.goals,
@@ -132,7 +168,7 @@ export default function SeasonPage() {
         xa: m.xa,
         matchesPlayed: m.matchesPlayed,
       })),
-    [events, matches]
+    [filteredEvents, filteredMatches]
   );
 
   const trendSeries = useMemo(() => {
@@ -161,7 +197,13 @@ export default function SeasonPage() {
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
       <AppHeader
         title="טבלה עונתית"
-        subtitle={loading ? "טוען..." : `${matchesCount} משחקים · ${rows.length} שחקנים`}
+        subtitle={
+          loading
+            ? "טוען..."
+            : `${filteredMatches.length}${
+                typeFilter === "all" ? "" : `/${matchesCount}`
+              } משחקים · ${rows.length} שחקנים`
+        }
         backHref="/"
       />
 
@@ -195,6 +237,25 @@ export default function SeasonPage() {
         className="field mb-3 w-full"
       />
 
+      <p className="mb-1.5 text-[11px] text-[var(--muted-2)]">סינון לפי סוג משחק</p>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        <button
+          onClick={() => setTypeFilter("all")}
+          className={`btn h-8 px-3 text-xs ${typeFilter === "all" ? "btn-primary" : "btn-ghost"}`}
+        >
+          הכל ({matchesCount})
+        </button>
+        {MATCH_TYPE_ORDER.map((t) => (
+          <button
+            key={t}
+            onClick={() => setTypeFilter(t)}
+            className={`btn h-8 px-3 text-xs ${typeFilter === t ? "btn-primary" : "btn-ghost"}`}
+          >
+            {MATCH_TYPE_LABELS[t]} ({typeCounts[t]})
+          </button>
+        ))}
+      </div>
+
       <p className="mb-1.5 text-[11px] text-[var(--muted-2)]">
         בחר מדד — משפיע גם על המגמה למעלה וגם על מיון השחקנים למטה
       </p>
@@ -226,9 +287,11 @@ export default function SeasonPage() {
         <div className="card p-6 text-center text-sm text-[var(--muted)]">
           {matchesCount === 0
             ? "עדיין אין משחקים. צור משחק חדש ואסוף אירועים."
-            : events.length === 0
-              ? "יש משחקים, אבל עדיין בלי אירועים עם שחקן — רשום פעולות בלייב."
-              : "עדיין אין נתונים עונתיים להצגה."}
+            : typeFilter !== "all" && filteredMatches.length === 0
+              ? `אין עדיין משחקים מסוג ${MATCH_TYPE_LABELS[typeFilter]}.`
+              : filteredEvents.length === 0
+                ? "יש משחקים, אבל עדיין בלי אירועים עם שחקן — רשום פעולות בלייב."
+                : "עדיין אין נתונים עונתיים להצגה."}
         </div>
       )}
 

@@ -21,17 +21,12 @@ export function LineupPitch({
   disabled = false,
 }: Props) {
   return (
-    <div className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-white/15 bg-gradient-to-b from-[#0c3a24] via-[#0a2f1e] to-[#071f14] shadow-[0_16px_40px_-18px_rgba(8,24,90,0.85)]">
-      {/* פסי דשא כמו מגרש מכוסח */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          backgroundImage:
-            "repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0 10%, rgba(0,0,0,0.06) 10% 20%)",
-        }}
-      />
-      {/* גוון כחול עדין של המועדון מעל הדשא */}
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#0a1433]/45 via-transparent to-[#050918]/55" />
+    <div
+      className="relative aspect-[3/4] w-full overflow-hidden rounded-2xl border border-white/15 bg-[#0a2f1e] bg-cover bg-center shadow-[0_16px_40px_-18px_rgba(8,24,90,0.85)]"
+      style={{ backgroundImage: "url('/pitch-grass.jpg')" }}
+    >
+      {/* הכהיה עדינה לניגודיות הקווים והשחקנים */}
+      <div className="pointer-events-none absolute inset-0 bg-black/25" />
       {/* וינייטה לעומק */}
       <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
 

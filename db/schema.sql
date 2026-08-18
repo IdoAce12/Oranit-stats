@@ -21,6 +21,7 @@ create table if not exists public.matches (
   match_date date not null,
   our_team_name text not null default '',
   status text not null default 'live' check (status in ('live','finished')),
+  match_type text not null default 'league' check (match_type in ('league','cup','friendly')),
   ended_at timestamptz,
   notes text not null default '',
   final_half int,

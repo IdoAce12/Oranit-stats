@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { listMatches } from "@/lib/db";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { Match } from "@/lib/types";
+import { MATCH_TYPE_LABELS, Match } from "@/lib/types";
 import { ConfigBanner } from "./components/ConfigBanner";
 import { ThemeToggle } from "./components/ThemeToggle";
 import { PageSkeleton } from "./components/Skeleton";
@@ -80,7 +80,12 @@ export default function HomePage() {
           <li key={m.id} className="card overflow-hidden">
             <div className="flex items-center justify-between p-4 pb-3">
               <div>
-                <p className="text-lg font-extrabold">מול {m.opponent}</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-lg font-extrabold">מול {m.opponent}</p>
+                  <span className="chip border-white/10 text-[10px] text-[var(--muted)]">
+                    {MATCH_TYPE_LABELS[m.match_type ?? "league"]}
+                  </span>
+                </div>
                 <p className="text-xs text-[var(--muted)]">
                   {new Date(m.match_date).toLocaleDateString("he-IL", {
                     day: "numeric",
