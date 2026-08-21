@@ -36,8 +36,6 @@ import {
   ActionType,
   DuelKind,
   DUEL_KIND_LABELS,
-  DUEL_RESULT_LABELS,
-  DuelResult,
   duelAction,
   EventRow,
   Half,
@@ -810,20 +808,21 @@ export default function LivePage() {
             )}
 
             {modalPhase === "duel" && (
-              <div className="grid grid-cols-2 gap-2.5">
-                {(["won", "lost"] as DuelResult[]).map((result) => (
-                  <button
-                    key={result}
-                    onClick={() => onDuelResultPick(result)}
-                    className={`btn rounded-2xl py-9 text-lg ${
-                      result === "won"
-                        ? "bg-emerald-500/85 text-[#04150e]"
-                        : "bg-red-500/80 text-white"
-                    }`}
-                  >
-                    {DUEL_RESULT_LABELS[result]}
-                  </button>
-                ))}
+              <div className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => onDuelResultPick("won")}
+                  className="btn rounded-2xl bg-emerald-500/85 py-9 text-xl font-black text-[#04150e]"
+                >
+                  זכה ✓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDuelResultPick("lost")}
+                  className="btn rounded-2xl bg-red-500/80 py-9 text-xl font-black text-white"
+                >
+                  הפסיד ✕
+                </button>
               </div>
             )}
 

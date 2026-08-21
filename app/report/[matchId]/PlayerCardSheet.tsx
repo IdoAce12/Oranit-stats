@@ -70,13 +70,13 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
 
         <div className="mb-3 grid grid-cols-2 gap-2">
           <BigStat
-            value={`${stats.aerialWon}/${stats.aerialLost}`}
-            label="מאבקי אוויר ז/ה"
+            value={`זכה ${stats.aerialWon} · הפסיד ${stats.aerialLost}`}
+            label="מאבקי אוויר"
             tone="info"
           />
           <BigStat
-            value={`${stats.groundWon}/${stats.groundLost}`}
-            label="מאבקי קרקע ז/ה"
+            value={`זכה ${stats.groundWon} · הפסיד ${stats.groundLost}`}
+            label="מאבקי קרקע"
             tone="accent"
           />
         </div>

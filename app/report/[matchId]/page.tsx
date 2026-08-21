@@ -257,12 +257,12 @@ export default function ReportPage() {
             <StatCard value={roundMetric(team.xg)} label="xG" tone="info" />
             <StatCard value={roundMetric(team.xa)} label="xA" tone="info" />
             <StatCard
-              value={`${team.aerialWon}/${team.aerialLost}`}
-              label="מאבקי אוויר ז/ה"
+              value={`זכה ${team.aerialWon} · הפסיד ${team.aerialLost}`}
+              label="מאבקי אוויר"
             />
             <StatCard
-              value={`${team.groundWon}/${team.groundLost}`}
-              label="מאבקי קרקע ז/ה"
+              value={`זכה ${team.groundWon} · הפסיד ${team.groundLost}`}
+              label="מאבקי קרקע"
             />
             <StatCard value={`${team.cornersFor}:${team.cornersAgainst}`} label="קרנות" />
             <StatCard value={team.eventsTotal} label="אירועים" />
@@ -364,6 +364,42 @@ export default function ReportPage() {
           )}
 
           <MetricTable
+            title="חילוצים"
+            exportId="tackles"
+            onExport={exportOne}
+            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.tacklesTotal}
+            cells={(r) => [r.tackles.def, r.tackles.mid, r.tackles.att, r.tacklesTotal]}
+            onPlayer={setCardPlayerId}
+            accentCol={2}
+            boldLast
+          />
+          <MetricTable
+            title="איבודי כדור"
+            exportId="losses"
+            onExport={exportOne}
+            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.lossesTotal}
+            cells={(r) => [r.losses.def, r.losses.mid, r.losses.att, r.lossesTotal]}
+            onPlayer={setCardPlayerId}
+            dangerCol={0}
+            boldLast
+          />
+          <MetricTable
+            title="מסירות מפתח"
+            exportId="key_passes"
+            onExport={exportOne}
+            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.keyPassesTotal}
+            cells={(r) => [r.keyPasses.def, r.keyPasses.mid, r.keyPasses.att, r.keyPassesTotal]}
+            onPlayer={setCardPlayerId}
+            infoCol={3}
+            boldLast
+          />
+          <MetricTable
             title="שערים"
             exportId="goals"
             onExport={exportOne}
@@ -384,42 +420,6 @@ export default function ReportPage() {
             cells={(r) => [r.assists]}
             onPlayer={setCardPlayerId}
             infoCol={0}
-          />
-          <MetricTable
-            title="איבודי כדור"
-            exportId="losses"
-            onExport={exportOne}
-            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
-            rows={playerStats}
-            sortKey={(r) => r.lossesTotal}
-            cells={(r) => [r.losses.def, r.losses.mid, r.losses.att, r.lossesTotal]}
-            onPlayer={setCardPlayerId}
-            dangerCol={0}
-            boldLast
-          />
-          <MetricTable
-            title="חילוצים"
-            exportId="tackles"
-            onExport={exportOne}
-            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
-            rows={playerStats}
-            sortKey={(r) => r.tacklesTotal}
-            cells={(r) => [r.tackles.def, r.tackles.mid, r.tackles.att, r.tacklesTotal]}
-            onPlayer={setCardPlayerId}
-            accentCol={2}
-            boldLast
-          />
-          <MetricTable
-            title="מסירות מפתח"
-            exportId="key_passes"
-            onExport={exportOne}
-            headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
-            rows={playerStats}
-            sortKey={(r) => r.keyPassesTotal}
-            cells={(r) => [r.keyPasses.def, r.keyPasses.mid, r.keyPasses.att, r.keyPassesTotal]}
-            onPlayer={setCardPlayerId}
-            infoCol={3}
-            boldLast
           />
           <MetricTable
             title="איומים לשער"
@@ -458,6 +458,7 @@ export default function ReportPage() {
             accentCol={0}
             dangerCol={1}
             boldLast
+            ltrCols
           />
           <MetricTable
             title="מאבקי קרקע"
@@ -471,6 +472,7 @@ export default function ReportPage() {
             accentCol={0}
             dangerCol={1}
             boldLast
+            ltrCols
           />
 
           <section className="mb-5">
@@ -552,6 +554,7 @@ function MetricTable({
   infoCol,
   boldLast,
   showMinutes = true,
+  ltrCols = false,
 }: {
   title: string;
   exportId: ExportTableId;
@@ -567,6 +570,8 @@ function MetricTable({
   infoCol?: number;
   boldLast?: boolean;
   showMinutes?: boolean;
+  /** עמודות משמאל לימין (למשל זכה/הפסיד) כדי למנוע בלבול ב-RTL */
+  ltrCols?: boolean;
 }) {
   const [col, setCol] = useState<number | null>(null);
   const [dir, setDir] = useState<"desc" | "asc">("desc");
@@ -592,10 +597,13 @@ function MetricTable({
       </div>
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-center text-sm">
+          <table
+            className="w-full border-collapse text-center text-sm"
+            dir={ltrCols ? "ltr" : undefined}
+          >
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[11px] text-[var(--muted)]">
-                <th className="px-3 py-2 text-right font-bold">שחקן</th>
+                <th className={`px-3 py-2 font-bold ${ltrCols ? "text-left" : "text-right"}`}>שחקן</th>
                 {headers.map((h, i) => (
                   <th key={h} className="px-2 py-2 font-bold">
                     <button
@@ -620,8 +628,11 @@ function MetricTable({
                 const vals = cellLabels ? cellLabels(row) : cells(row);
                 return (
                   <tr key={row.playerId!} className="border-b border-[var(--border)]/50 odd:bg-white/[0.02]">
-                    <td className="px-3 py-2.5 text-right">
-                      <button onClick={() => onPlayer(row.playerId)} className="text-right font-bold">
+                    <td className={`px-3 py-2.5 ${ltrCols ? "text-left" : "text-right"}`}>
+                      <button
+                        onClick={() => onPlayer(row.playerId)}
+                        className={`font-bold ${ltrCols ? "text-left" : "text-right"}`}
+                      >
                         <span className="tabular text-[var(--muted)]">#{row.shirtNumber}</span>{" "}
                         <span className="underline decoration-[var(--border-strong)] underline-offset-2">
                           {row.name}

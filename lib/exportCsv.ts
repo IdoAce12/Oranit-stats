@@ -256,8 +256,10 @@ export function coachSheetCsv(
       "איבודים כלליים",
       "חילוצים",
       "מס״מ",
-      "אוויר ז/ה",
-      "קרקע ז/ה",
+      "אוויר זכה",
+      "אוויר הפסיד",
+      "קרקע זכה",
+      "קרקע הפסיד",
     ])
   );
   for (const r of [...stats].sort(
@@ -273,8 +275,10 @@ export function coachSheetCsv(
         r.lossesTotal,
         r.tacklesTotal,
         r.keyPassesTotal,
-        `${r.aerialWon}/${r.aerialLost}`,
-        `${r.groundWon}/${r.groundLost}`,
+        r.aerialWon,
+        r.aerialLost,
+        r.groundWon,
+        r.groundLost,
       ])
     );
   }
