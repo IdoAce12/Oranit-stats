@@ -36,6 +36,7 @@ import {
   ActionType,
   DuelKind,
   DUEL_KIND_LABELS,
+  DuelResult,
   duelAction,
   EventRow,
   Half,
