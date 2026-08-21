@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RadarProfile } from "../../components/RadarProfile";
 import { TrendChart, TrendPoint } from "../../components/TrendChart";
 import { AppHeader } from "../../components/AppHeader";
@@ -53,6 +54,24 @@ function lineMetric(l: PlayerMatchLine, m: MetricKey): number {
 }
 
 export default function ComparePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto w-full max-w-3xl px-4 pt-6">
+          <AppHeader title="השוואת שחקנים" backHref="/" />
+          <PageSkeleton />
+        </main>
+      }
+    >
+      <ComparePageInner />
+    </Suspense>
+  );
+}
+
+function ComparePageInner() {
+  const searchParams = useSearchParams();
+  const backHref = searchParams.get("from") === "home" ? "/" : "/season";
+
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
@@ -137,7 +156,7 @@ export default function ComparePage() {
   if (loading) {
     return (
       <main className="mx-auto w-full max-w-3xl px-4 pt-6">
-        <AppHeader title="השוואת שחקנים" backHref="/season" />
+        <AppHeader title="השוואת שחקנים" backHref={backHref} />
         <PageSkeleton />
       </main>
     );
@@ -145,7 +164,7 @@ export default function ComparePage() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
-      <AppHeader title="השוואת שחקנים" subtitle="Head to Head" backHref="/season" />
+      <AppHeader title="השוואת שחקנים" subtitle="Head to Head" backHref={backHref} />
       {error && <p className="mb-3 text-[var(--danger)]">{error}</p>}
 
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">

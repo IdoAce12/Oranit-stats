@@ -98,7 +98,7 @@ export default function ReportPage() {
   const defensiveLosses = useMemo(
     () =>
       events
-        .filter((e) => e.action_type === "ball_loss" && e.zone === "def")
+        .filter((e) => e.action_type === "ball_loss")
         .sort((a, b) => a.half - b.half || a.match_minute - b.match_minute),
     [events]
   );
@@ -114,8 +114,17 @@ export default function ReportPage() {
       id === "full"
         ? matchReportToCsv(events, players, meta, statsOpts)
         : exportTableCsv(id, events, players, meta, statsOpts);
-    const label = id === "full" ? "full" : id;
-    downloadCsv(`scout_${match?.opponent ?? "match"}_${label}.csv`, csv);
+    const label = id === "full" || id === "coach" ? "סיכום_משחק" : id;
+    downloadCsv(`${label}_${match?.opponent ?? "match"}.csv`, csv);
+  };
+
+  const printReport = () => {
+    const prev = document.title;
+    document.title = `סיכום משחק${match?.opponent ? ` מול ${match.opponent}` : ""}`;
+    window.print();
+    window.setTimeout(() => {
+      document.title = prev;
+    }, 1000);
   };
 
   const saveNotes = async () => {
@@ -177,7 +186,7 @@ export default function ReportPage() {
                 חזרה ללייב
               </Link>
             ) : (
-              <button type="button" onClick={() => window.print()} className="btn btn-ghost h-9 px-2 text-xs">
+              <button type="button" onClick={printReport} className="btn btn-ghost h-9 px-2 text-xs">
                 PDF
               </button>
             )}
@@ -214,22 +223,11 @@ export default function ReportPage() {
         <>
           {/* סיכום חכם */}
           <section className="card mb-4 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="label">סיכום משחק</p>
-                <p className="mt-1 text-3xl font-black tabular text-[var(--accent)]">
-                  {summary.ourGoals} <span className="text-base font-bold text-[var(--muted)]">שערים</span>
-                </p>
-              </div>
-              {summary.motm && (
-                <button
-                  onClick={() => summary.motm?.playerId && setCardPlayerId(summary.motm.playerId)}
-                  className="rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent)]/10 px-3 py-2 text-left"
-                >
-                  <p className="text-[10px] font-bold text-[var(--accent)]">שחקן המשחק</p>
-                  <p className="font-extrabold">{summary.motm.label}</p>
-                </button>
-              )}
+            <div>
+              <p className="label">סיכום משחק</p>
+              <p className="mt-1 text-3xl font-black tabular text-[var(--accent)]">
+                {summary.ourGoals} <span className="text-base font-bold text-[var(--muted)]">שערים</span>
+              </p>
             </div>
             {summary.insights.length > 0 && (
               <ul className="mt-3 flex flex-col gap-1.5">
@@ -258,6 +256,14 @@ export default function ReportPage() {
             <StatCard value={`${team.shotsInBox}/${team.shotsOutBox}`} label="איומים רחבה/חוץ" />
             <StatCard value={roundMetric(team.xg)} label="xG" tone="info" />
             <StatCard value={roundMetric(team.xa)} label="xA" tone="info" />
+            <StatCard
+              value={`${team.aerialWon}/${team.aerialLost}`}
+              label="מאבקי אוויר ז/ה"
+            />
+            <StatCard
+              value={`${team.groundWon}/${team.groundLost}`}
+              label="מאבקי קרקע ז/ה"
+            />
             <StatCard value={`${team.cornersFor}:${team.cornersAgainst}`} label="קרנות" />
             <StatCard value={team.eventsTotal} label="אירועים" />
           </section>
@@ -285,8 +291,8 @@ export default function ReportPage() {
             <button onClick={() => exportOne("full")} className="btn btn-primary mt-2 w-full py-3 text-sm">
               ⬇ ייצוא מלא לאקסל (CSV)
             </button>
-            <button onClick={() => window.print()} className="btn btn-ghost mt-2 w-full py-3 text-sm">
-              ייצוא PDF להדפסה
+            <button onClick={printReport} className="btn btn-ghost mt-2 w-full py-3 text-sm">
+              ייצוא PDF — סיכום משחק
             </button>
           </section>
 
@@ -440,12 +446,39 @@ export default function ReportPage() {
             infoCol={1}
           />
 
+          <MetricTable
+            title="מאבקי אוויר"
+            exportId="duels"
+            onExport={exportOne}
+            headers={["זכה", "הפסיד", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.aerialWon + r.aerialLost}
+            cells={(r) => [r.aerialWon, r.aerialLost, r.aerialWon + r.aerialLost]}
+            onPlayer={setCardPlayerId}
+            accentCol={0}
+            dangerCol={1}
+            boldLast
+          />
+          <MetricTable
+            title="מאבקי קרקע"
+            exportId="duels"
+            onExport={exportOne}
+            headers={["זכה", "הפסיד", "סה״כ"]}
+            rows={playerStats}
+            sortKey={(r) => r.groundWon + r.groundLost}
+            cells={(r) => [r.groundWon, r.groundLost, r.groundWon + r.groundLost]}
+            onPlayer={setCardPlayerId}
+            accentCol={0}
+            dangerCol={1}
+            boldLast
+          />
+
           <section className="mb-5">
             <h2 className="label mb-2">
-              נקודות לחיתוך וידאו — איבודי הגנה ({defensiveLosses.length})
+              נקודות לחיתוך וידאו — איבודים כלליים ({defensiveLosses.length})
             </h2>
             {defensiveLosses.length === 0 ? (
-              <div className="card p-4 text-center text-sm text-[var(--muted)]">אין איבודי הגנה.</div>
+              <div className="card p-4 text-center text-sm text-[var(--muted)]">אין איבודים.</div>
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {defensiveLosses.map((e) => {
@@ -457,6 +490,7 @@ export default function ReportPage() {
                     >
                       <span className="font-bold tabular">
                         מחצית {e.half} · דקה {e.match_minute}׳
+                        {e.zone ? ` · ${ZONE_LABELS[e.zone]}` : ""}
                       </span>
                       <button
                         onClick={() => e.player_id && setCardPlayerId(e.player_id)}

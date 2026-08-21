@@ -33,6 +33,7 @@ export type ExportTableId =
   | "tackles"
   | "key_passes"
   | "shots"
+  | "duels"
   | "coach"
   | "full"
   | "events"
@@ -177,6 +178,30 @@ function tableShots(stats: PlayerMatchStats[], team: ReturnType<typeof computeTe
   return lines;
 }
 
+function tableDuels(stats: PlayerMatchStats[]): string[] {
+  const lines = [
+    "=== מאבקים ===",
+    joinRow(["מס׳", "שם", "אוויר זכה", "אוויר הפסיד", "קרקע זכה", "קרקע הפסיד"]),
+  ];
+  for (const row of [...stats].sort(
+    (a, b) =>
+      b.aerialWon + b.aerialLost + b.groundWon + b.groundLost -
+      (a.aerialWon + a.aerialLost + a.groundWon + a.groundLost)
+  )) {
+    if (row.playerId === null) continue;
+    lines.push(
+      joinRow([
+        ...playerRef(row),
+        row.aerialWon,
+        row.aerialLost,
+        row.groundWon,
+        row.groundLost,
+      ])
+    );
+  }
+  return lines;
+}
+
 function tableEvents(events: MatchEvent[], players: Player[]): string[] {
   const lines = [
     "=== לוג אירועים מלא ===",
@@ -215,22 +240,26 @@ export function coachSheetCsv(
   const summary = buildMatchSummary(events, players);
   const stats = computePlayerMatchStats(events, players, opts).filter((p) => p.playerId !== null);
   const lines: string[] = [];
-  lines.push(joinRow(["גיליון מאמן", meta?.opponent ?? "", meta?.matchDate ?? ""]));
+  lines.push(joinRow(["סיכום משחק", meta?.opponent ?? "", meta?.matchDate ?? ""]));
   lines.push(joinRow(["שערים שלנו", summary.ourGoals]));
-  if (summary.motm) {
-    lines.push(
-      joinRow([
-        "שחקן המשחק",
-        summary.motm.label,
-        summary.motm.score > 0 ? `+${summary.motm.score.toFixed(1)}` : summary.motm.score.toFixed(1),
-      ])
-    );
-  }
   lines.push("");
   lines.push("תובנות");
   for (const i of summary.insights) lines.push(joinRow([i.text]));
   lines.push("");
-  lines.push(joinRow(["מס׳", "שם", "דקות", "שערים", "בישולים", "איבודי הגנה", "חילוצים", "מס״מ"]));
+  lines.push(
+    joinRow([
+      "מס׳",
+      "שם",
+      "דקות",
+      "שערים",
+      "בישולים",
+      "איבודים כלליים",
+      "חילוצים",
+      "מס״מ",
+      "אוויר ז/ה",
+      "קרקע ז/ה",
+    ])
+  );
   for (const r of [...stats].sort(
     (a, b) => b.goals - a.goals || b.assists - a.assists || b.score - a.score
   )) {
@@ -241,9 +270,11 @@ export function coachSheetCsv(
         r.minutesPlayed,
         r.goals,
         r.assists,
-        r.losses.def,
+        r.lossesTotal,
         r.tacklesTotal,
         r.keyPassesTotal,
+        `${r.aerialWon}/${r.aerialLost}`,
+        `${r.groundWon}/${r.groundLost}`,
       ])
     );
   }
@@ -284,6 +315,8 @@ export function exportTableCsv(
       return [...header, ...tableKeyPasses(stats, team.keyPasses)].join("\n");
     case "shots":
       return [...header, ...tableShots(stats, team)].join("\n");
+    case "duels":
+      return [...header, ...tableDuels(stats)].join("\n");
     case "events":
       return [...header, ...tableEvents(events, players)].join("\n");
     case "coach":
@@ -316,6 +349,7 @@ export function matchReportToCsv(
   lines.push(...tableTackles(stats, team), "");
   lines.push(...tableKeyPasses(stats, team.keyPasses), "");
   lines.push(...tableShots(stats, team), "");
+  lines.push(...tableDuels(stats), "");
 
   lines.push("=== סיכום קבוצתי ===");
   lines.push(joinRow(["שערים", "בישולים", "קרנות לזכותנו", "קרנות לחובתנו", "סה״כ אירועים"]));
@@ -398,6 +432,7 @@ export const EXPORT_TABLE_LABELS: Record<Exclude<ExportTableId, "full" | "season
   tackles: "חילוצים",
   key_passes: "מסירות מפתח",
   shots: "איומים",
+  duels: "מאבקים",
   events: "לוג אירועים",
-  coach: "גיליון מאמן",
+  coach: "סיכום משחק",
 };

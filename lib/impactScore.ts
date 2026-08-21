@@ -27,6 +27,10 @@ export const IMPACT_WEIGHTS = {
   // קרנות הן אירוע קבוצתי ללא שחקן - לא משפיעות על ציון שחקן
   corner_for: 0,
   corner_against: 0,
+  aerial_won: 1,
+  aerial_lost: -0.5,
+  ground_won: 1,
+  ground_lost: -0.5,
 };
 
 export function scoreForEvent(event: MatchEvent): number {
@@ -48,6 +52,14 @@ export function scoreForEvent(event: MatchEvent): number {
     case "corner_for":
     case "corner_against":
       return 0;
+    case "aerial_won":
+      return IMPACT_WEIGHTS.aerial_won;
+    case "aerial_lost":
+      return IMPACT_WEIGHTS.aerial_lost;
+    case "ground_won":
+      return IMPACT_WEIGHTS.ground_won;
+    case "ground_lost":
+      return IMPACT_WEIGHTS.ground_lost;
     default:
       return 0;
   }
@@ -66,6 +78,10 @@ export interface PlayerImpact {
   lossesByZone: Record<Zone, number>;
   shotsInBox: number;
   shotsOutBox: number;
+  aerialWon: number;
+  aerialLost: number;
+  groundWon: number;
+  groundLost: number;
 }
 
 function emptyCounts(): Record<ActionType, number> {
@@ -78,6 +94,10 @@ function emptyCounts(): Record<ActionType, number> {
     assist: 0,
     corner_for: 0,
     corner_against: 0,
+    aerial_won: 0,
+    aerial_lost: 0,
+    ground_won: 0,
+    ground_lost: 0,
   };
 }
 
@@ -109,6 +129,10 @@ export function computeImpact(events: MatchEvent[], players: Player[]): PlayerIm
         lossesByZone: emptyZones(),
         shotsInBox: 0,
         shotsOutBox: 0,
+        aerialWon: 0,
+        aerialLost: 0,
+        groundWon: 0,
+        groundLost: 0,
       };
       map.set(key, entry);
     }
@@ -129,6 +153,10 @@ export function computeImpact(events: MatchEvent[], players: Player[]): PlayerIm
       if (ev.shot_location === "in_box") entry.shotsInBox += 1;
       else entry.shotsOutBox += 1;
     }
+    if (ev.action_type === "aerial_won") entry.aerialWon += 1;
+    if (ev.action_type === "aerial_lost") entry.aerialLost += 1;
+    if (ev.action_type === "ground_won") entry.groundWon += 1;
+    if (ev.action_type === "ground_lost") entry.groundLost += 1;
   }
 
   return Array.from(map.values()).sort((a, b) => b.score - a.score);

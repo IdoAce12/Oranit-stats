@@ -23,6 +23,10 @@ export interface PlayerMatchStats {
   shotsInBox: number;
   shotsOutBox: number;
   shotsTotal: number;
+  aerialWon: number;
+  aerialLost: number;
+  groundWon: number;
+  groundLost: number;
   xg: number;
   xa: number;
   actionsTotal: number;
@@ -51,6 +55,10 @@ function emptyRow(player: Player | null, playerId: string | null): PlayerMatchSt
     shotsInBox: 0,
     shotsOutBox: 0,
     shotsTotal: 0,
+    aerialWon: 0,
+    aerialLost: 0,
+    groundWon: 0,
+    groundLost: 0,
     xg: 0,
     xa: 0,
     actionsTotal: 0,
@@ -107,6 +115,14 @@ export function computePlayerMatchStats(
       if (ev.shot_location === "in_box") row.shotsInBox += 1;
       else row.shotsOutBox += 1;
       row.shotsTotal += 1;
+    } else if (ev.action_type === "aerial_won") {
+      row.aerialWon += 1;
+    } else if (ev.action_type === "aerial_lost") {
+      row.aerialLost += 1;
+    } else if (ev.action_type === "ground_won") {
+      row.groundWon += 1;
+    } else if (ev.action_type === "ground_lost") {
+      row.groundLost += 1;
     }
     row.xg += xgForEvent(ev);
     row.xa += xaForEvent(ev);
@@ -148,6 +164,10 @@ export interface TeamMatchTotals {
   keyPasses: number;
   shotsInBox: number;
   shotsOutBox: number;
+  aerialWon: number;
+  aerialLost: number;
+  groundWon: number;
+  groundLost: number;
   xg: number;
   xa: number;
   eventsTotal: number;
@@ -163,6 +183,10 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
   let keyPasses = 0;
   let shotsInBox = 0;
   let shotsOutBox = 0;
+  let aerialWon = 0;
+  let aerialLost = 0;
+  let groundWon = 0;
+  let groundLost = 0;
   let xg = 0;
   let xa = 0;
 
@@ -178,6 +202,10 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
     }
     if (e.action_type === "corner_for") cornersFor += 1;
     if (e.action_type === "corner_against") cornersAgainst += 1;
+    if (e.action_type === "aerial_won") aerialWon += 1;
+    if (e.action_type === "aerial_lost") aerialLost += 1;
+    if (e.action_type === "ground_won") groundWon += 1;
+    if (e.action_type === "ground_lost") groundLost += 1;
     xg += xgForEvent(e);
     xa += xaForEvent(e);
   }
@@ -192,6 +220,10 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
     keyPasses,
     shotsInBox,
     shotsOutBox,
+    aerialWon,
+    aerialLost,
+    groundWon,
+    groundLost,
     xg,
     xa,
     eventsTotal: events.length,

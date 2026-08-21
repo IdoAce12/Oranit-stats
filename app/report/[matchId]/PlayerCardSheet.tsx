@@ -68,6 +68,19 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
           <BigStat value={roundMetric(stats.xa)} label="xA" tone="cyan" />
         </div>
 
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <BigStat
+            value={`${stats.aerialWon}/${stats.aerialLost}`}
+            label="מאבקי אוויר ז/ה"
+            tone="info"
+          />
+          <BigStat
+            value={`${stats.groundWon}/${stats.groundLost}`}
+            label="מאבקי קרקע ז/ה"
+            tone="accent"
+          />
+        </div>
+
         {/* פירוק אזורים */}
         <Section title="איבודי כדור לפי אזור">
           <ZoneRow data={stats.losses} highlight="def" tone="danger" />
@@ -135,7 +148,7 @@ function BigStat({
   label,
   tone,
 }: {
-  value: number;
+  value: number | string;
   label: string;
   tone?: "accent" | "info" | "danger" | "violet" | "cyan";
 }) {

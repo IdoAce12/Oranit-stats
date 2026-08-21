@@ -58,7 +58,7 @@ export default function HomePage() {
         <Link href="/season" className="btn btn-ghost flex-1 py-3 text-sm">
           טבלה עונתית
         </Link>
-        <Link href="/season/compare" className="btn btn-ghost flex-1 py-3 text-sm">
+        <Link href="/season/compare?from=home" className="btn btn-ghost flex-1 py-3 text-sm">
           השוואה
         </Link>
       </div>

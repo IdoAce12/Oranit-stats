@@ -13,7 +13,7 @@ describe("zoneHeatPercent", () => {
 });
 
 describe("buildMatchSummary", () => {
-  it("בוחר שחקן משחק לפי הציון הגבוה ביותר", () => {
+  it("לא מחזיר שחקן מצטיין", () => {
     const players = [
       makePlayer({ id: "a", name: "כובש", shirt_number: 9 }),
       makePlayer({ id: "b", name: "מאבד", shirt_number: 5 }),
@@ -24,19 +24,23 @@ describe("buildMatchSummary", () => {
       action("b", "ball_loss", { zone: "def" }),
     ];
     const summary = buildMatchSummary(events, players);
-    expect(summary.motm?.playerId).toBe("a");
+    expect("motm" in summary).toBe(false);
     expect(summary.ourGoals).toBe(1);
   });
 
-  it("מתריע על ריבוי איבודים בהגנה", () => {
+  it("מתריע על ריבוי איבודים כלליים", () => {
     const players = [makePlayer({ id: "a" })];
     const events = [
       action("a", "ball_loss", { zone: "def" }),
+      action("a", "ball_loss", { zone: "mid" }),
+      action("a", "ball_loss", { zone: "att" }),
       action("a", "ball_loss", { zone: "def" }),
-      action("a", "ball_loss", { zone: "def" }),
+      action("a", "ball_loss", { zone: "mid" }),
     ];
     const summary = buildMatchSummary(events, players);
-    expect(summary.insights.some((i) => i.tone === "warn" && i.text.includes("שליש ההגנתי"))).toBe(true);
+    expect(summary.insights.some((i) => i.tone === "warn" && i.text.includes("איבודים כלליים"))).toBe(
+      true
+    );
   });
 
   it("מגביל ל-3 תובנות לכל היותר", () => {

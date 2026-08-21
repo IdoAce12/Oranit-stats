@@ -6,11 +6,18 @@ export type ActionType =
   | "goal"
   | "assist"
   | "corner_for"
-  | "corner_against";
+  | "corner_against"
+  | "aerial_won"
+  | "aerial_lost"
+  | "ground_won"
+  | "ground_lost";
 
 export type Zone = "def" | "mid" | "att";
 
 export type ShotLocation = "in_box" | "out_box";
+
+export type DuelKind = "aerial" | "ground";
+export type DuelResult = "won" | "lost";
 
 export type Half = 1 | 2;
 
@@ -124,7 +131,26 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   assist: "בישול",
   corner_for: "קרן לזכותנו",
   corner_against: "קרן לחובתנו",
+  aerial_won: "מאבק אוויר · זכה",
+  aerial_lost: "מאבק אוויר · הפסיד",
+  ground_won: "מאבק קרקע · זכה",
+  ground_lost: "מאבק קרקע · הפסיד",
 };
+
+export const DUEL_KIND_LABELS: Record<DuelKind, string> = {
+  aerial: "מאבקי אוויר",
+  ground: "מאבקי קרקע",
+};
+
+export const DUEL_RESULT_LABELS: Record<DuelResult, string> = {
+  won: "זכה",
+  lost: "הפסיד",
+};
+
+export function duelAction(kind: DuelKind, result: DuelResult): ActionType {
+  if (kind === "aerial") return result === "won" ? "aerial_won" : "aerial_lost";
+  return result === "won" ? "ground_won" : "ground_lost";
+}
 
 export const ZONE_LABELS: Record<Zone, string> = {
   def: "הגנה",
@@ -145,3 +171,5 @@ export const ACTIONS_NEED_SHOT_LOCATION: ActionType[] = ["shot"];
 
 // פעולות שהן אירוע קבוצתי (ללא שחקן ספציפי) ונרשמות מיד
 export const TEAM_ACTIONS: ActionType[] = ["corner_for", "corner_against"];
+
+export const DUEL_ACTIONS: ActionType[] = ["aerial_won", "aerial_lost", "ground_won", "ground_lost"];

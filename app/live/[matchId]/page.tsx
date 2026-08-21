@@ -34,6 +34,11 @@ import {
   ACTIONS_NEED_SHOT_LOCATION,
   ACTIONS_NEED_ZONE,
   ActionType,
+  DuelKind,
+  DUEL_KIND_LABELS,
+  DUEL_RESULT_LABELS,
+  DuelResult,
+  duelAction,
   EventRow,
   Half,
   LiveEvent,
@@ -51,6 +56,7 @@ import { MatchClock } from "./MatchClock";
 const PRIMARY_ACTIONS: ActionType[] = ["ball_loss", "tackle", "key_pass", "shot"];
 const SCORE_ACTIONS: ActionType[] = ["goal", "assist"];
 const CORNER_ACTIONS: ActionType[] = ["corner_for", "corner_against"];
+const DUEL_KINDS: DuelKind[] = ["aerial", "ground"];
 
 const ACTION_BTN: Record<ActionType, string> = {
   ball_loss: "bg-gradient-to-b from-red-500 to-red-600 text-white shadow-[0_10px_30px_-12px_rgba(239,68,68,0.8)]",
@@ -61,10 +67,14 @@ const ACTION_BTN: Record<ActionType, string> = {
   assist: "bg-gradient-to-b from-cyan-400 to-cyan-500 text-[#042f2e] shadow-[0_10px_30px_-12px_rgba(34,211,238,0.8)]",
   corner_for: "border border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent)]",
   corner_against: "border border-red-400/40 bg-red-500/10 text-red-300",
+  aerial_won: "bg-gradient-to-b from-sky-400 to-sky-600 text-white",
+  aerial_lost: "bg-gradient-to-b from-slate-500 to-slate-700 text-white",
+  ground_won: "bg-gradient-to-b from-lime-400 to-lime-600 text-[#14320a]",
+  ground_lost: "bg-gradient-to-b from-orange-500 to-orange-700 text-white",
 };
 
 type SubPhase = "out" | "in" | null;
-type ModalPhase = "action" | "zone" | "box" | null;
+type ModalPhase = "action" | "zone" | "box" | "duel" | null;
 
 export default function LivePage() {
   const params = useParams<{ matchId: string }>();
@@ -92,12 +102,15 @@ export default function LivePage() {
   const [subPhase, setSubPhase] = useState<SubPhase>(null);
   const [subOutId, setSubOutId] = useState<string | null>(null);
   const [subBusy, setSubBusy] = useState(false);
+  const [swapMode, setSwapMode] = useState(false);
+  const [swapFromId, setSwapFromId] = useState<string | null>(null);
 
   const clockRef = useRef<{ half: Half; minute: number }>({ half: 1, minute: 0 });
 
   const [modalPlayerId, setModalPlayerId] = useState<string | null>(null);
   const [modalAction, setModalAction] = useState<ActionType | null>(null);
   const [modalPhase, setModalPhase] = useState<ModalPhase>(null);
+  const [duelKind, setDuelKind] = useState<DuelKind | null>(null);
 
   const refreshPending = useCallback(() => setPending(pendingCount()), []);
 
@@ -204,6 +217,7 @@ export default function LivePage() {
       setModalAction(null);
       setModalPlayerId(null);
       setModalPhase(null);
+      setDuelKind(null);
       tapFeedback();
       trySync();
     },
@@ -214,6 +228,7 @@ export default function LivePage() {
     tapFeedback(8);
     setModalPlayerId(playerId);
     setModalAction(null);
+    setDuelKind(null);
     setModalPhase("action");
   };
 
@@ -235,6 +250,17 @@ export default function LivePage() {
       return;
     }
     commit(action, modalPlayerId, null, null);
+  };
+
+  const onDuelKindPick = (kind: DuelKind) => {
+    tapFeedback(8);
+    setDuelKind(kind);
+    setModalPhase("duel");
+  };
+
+  const onDuelResultPick = (result: DuelResult) => {
+    if (!modalPlayerId || !duelKind) return;
+    commit(duelAction(duelKind, result), modalPlayerId, null, null);
   };
 
   const undoLast = async () => {
@@ -351,6 +377,8 @@ export default function LivePage() {
   };
 
   const openSub = () => {
+    setSwapMode(false);
+    setSwapFromId(null);
     setSubPhase("out");
     setSubOutId(null);
     setNotice(null);
@@ -365,7 +393,14 @@ export default function LivePage() {
   const confirmSub = async (inId: string) => {
     if (!subOutId) return;
     setSubBusy(true);
-    const slot = slotOfPlayer(occupants, subOutId);
+    const outPlayer = players.find((p) => p.id === subOutId);
+    const outSlot =
+      typeof outPlayer?.lineup_slot === "number" &&
+      outPlayer.lineup_slot >= 0 &&
+      outPlayer.lineup_slot <= 9
+        ? outPlayer.lineup_slot
+        : slotOfPlayer(occupants, subOutId);
+
     try {
       const sub = await recordSubstitution({
         match_id: matchId,
@@ -373,22 +408,76 @@ export default function LivePage() {
         player_in_id: inId,
         half: clockRef.current.half,
         match_minute: clockRef.current.minute,
-        lineup_slot: slot,
+        lineup_slot: outSlot,
       });
       setSubs((prev) => [...prev, sub]);
-      setPlayers((prev) =>
-        prev.map((p) => {
+      setPlayers((prev) => {
+        const next = prev.map((p) => {
           if (p.id === subOutId) return { ...p, on_pitch: false, lineup_slot: null };
-          if (p.id === inId) return { ...p, on_pitch: true, lineup_slot: slot };
+          if (p.id === inId) return { ...p, on_pitch: true, lineup_slot: outSlot };
           return p;
-        })
-      );
+        });
+        const resolved = resolveOccupants(next.filter((p) => p.on_pitch === true));
+        const synced = next.map((p) => {
+          const slot = resolved.findIndex((o) => o?.id === p.id);
+          if (p.on_pitch === true) {
+            return { ...p, lineup_slot: slot >= 0 ? slot : p.lineup_slot ?? null };
+          }
+          return { ...p, lineup_slot: null };
+        });
+        const slotUpdates = synced
+          .filter((p) => p.on_pitch === true || p.id === subOutId)
+          .map((p) => ({
+            id: p.id,
+            lineup_slot: p.lineup_slot ?? null,
+            on_pitch: p.on_pitch === true,
+          }));
+        updatePlayerSlots(slotUpdates).catch(() => {
+          /* slot sync best-effort — החילוף כבר נשמר */
+        });
+        return synced;
+      });
       tapFeedback();
       closeSub();
     } catch {
       setNotice("חילוף נכשל — הרץ migration_v5.sql / migration_v6.sql ב-Supabase");
     } finally {
       setSubBusy(false);
+    }
+  };
+
+  const swapPitchSlots = async (aId: string, bId: string) => {
+    const a = players.find((p) => p.id === aId);
+    const b = players.find((p) => p.id === bId);
+    if (!a || !b) return;
+    const slotA =
+      typeof a.lineup_slot === "number" ? a.lineup_slot : slotOfPlayer(occupants, aId);
+    const slotB =
+      typeof b.lineup_slot === "number" ? b.lineup_slot : slotOfPlayer(occupants, bId);
+    if (slotA == null || slotB == null || slotA === slotB) return;
+
+    setPlayers((prev) =>
+      prev.map((p) => {
+        if (p.id === aId) return { ...p, lineup_slot: slotB };
+        if (p.id === bId) return { ...p, lineup_slot: slotA };
+        return p;
+      })
+    );
+    try {
+      await updatePlayerSlots([
+        { id: aId, lineup_slot: slotB, on_pitch: true },
+        { id: bId, lineup_slot: slotA, on_pitch: true },
+      ]);
+      tapFeedback();
+    } catch {
+      setNotice("החלפת עמדות נכשלה");
+      setPlayers((prev) =>
+        prev.map((p) => {
+          if (p.id === aId) return { ...p, lineup_slot: slotA };
+          if (p.id === bId) return { ...p, lineup_slot: slotB };
+          return p;
+        })
+      );
     }
   };
 
@@ -406,6 +495,7 @@ export default function LivePage() {
     setModalAction(null);
     setModalPlayerId(null);
     setModalPhase(null);
+    setDuelKind(null);
   };
 
   const onPitchSlot = (_slot: number, player: { id: string } | null) => {
@@ -417,6 +507,21 @@ export default function LivePage() {
       return;
     }
     if (subPhase === "in") return;
+    if (swapMode) {
+      if (!swapFromId) {
+        setSwapFromId(player.id);
+        tapFeedback(8);
+        return;
+      }
+      if (swapFromId === player.id) {
+        setSwapFromId(null);
+        return;
+      }
+      void swapPitchSlots(swapFromId, player.id);
+      setSwapFromId(null);
+      setSwapMode(false);
+      return;
+    }
     openPlayerActions(player.id);
   };
 
@@ -498,11 +603,32 @@ export default function LivePage() {
         </div>
       )}
 
+      {swapMode && (
+        <div className="mt-3 rounded-2xl border border-sky-400/40 bg-sky-400/10 px-3 py-2 text-sm">
+          <div className="flex items-center justify-between gap-2">
+            <p className="font-bold text-sky-200">
+              {swapFromId
+                ? `בחר שחקן שני להחלפת עמדה עם #${players.find((p) => p.id === swapFromId)?.shirt_number ?? "?"}`
+                : "החלפת עמדות — לחץ על שני שחקנים במגרש"}
+            </p>
+            <button
+              onClick={() => {
+                setSwapMode(false);
+                setSwapFromId(null);
+              }}
+              className="btn btn-ghost h-7 shrink-0 px-3 text-xs"
+            >
+              בטל
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="mt-3">
         <LineupPitch
           occupants={occupants}
           onSlotClick={onPitchSlot}
-          highlightPlayerId={subOutId ?? modalPlayerId}
+          highlightPlayerId={subOutId ?? swapFromId ?? modalPlayerId}
           disabled={subBusy}
         />
       </div>
@@ -549,13 +675,34 @@ export default function LivePage() {
       </div>
 
       <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-        <button onClick={openSub} className="btn btn-ghost rounded-2xl py-3 text-base font-extrabold">
+        <button
+          onClick={() => {
+            setSwapMode(false);
+            setSwapFromId(null);
+            openSub();
+          }}
+          className="btn btn-ghost rounded-2xl py-3 text-base font-extrabold"
+        >
           ⟳ חילוף
         </button>
-        <button onClick={() => setRosterOpen(true)} className="btn btn-ghost rounded-2xl py-3 text-base">
-          סגל · {players.length}
+        <button
+          onClick={() => {
+            closeSub();
+            setSwapMode((v) => !v);
+            setSwapFromId(null);
+            closeModal();
+          }}
+          className={`btn rounded-2xl py-3 text-base font-extrabold ${
+            swapMode ? "btn-primary" : "btn-ghost"
+          }`}
+        >
+          החלף עמדות
         </button>
       </div>
+
+      <button onClick={() => setRosterOpen(true)} className="btn btn-ghost mt-2.5 w-full rounded-2xl py-3 text-base">
+        סגל · {players.length}
+      </button>
 
       {subs.length > 0 && (
         <p className="mt-2 text-center text-[11px] text-[var(--muted-2)]">
@@ -613,6 +760,7 @@ export default function LivePage() {
                 {modalPhase === "action" && " · מה קרה?"}
                 {modalPhase === "zone" && modalAction && ` · ${ACTION_LABELS[modalAction]} · אזור?`}
                 {modalPhase === "box" && " · מאיפה הבעיטה?"}
+                {modalPhase === "duel" && duelKind && ` · ${DUEL_KIND_LABELS[duelKind]} · תוצאה?`}
               </span>
               <button onClick={closeModal} className="btn btn-ghost h-8 px-3 text-sm">
                 בטל
@@ -643,6 +791,39 @@ export default function LivePage() {
                     </button>
                   ))}
                 </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {DUEL_KINDS.map((kind) => (
+                    <button
+                      key={kind}
+                      onClick={() => onDuelKindPick(kind)}
+                      className={`btn rounded-2xl py-6 text-lg ${
+                        kind === "aerial"
+                          ? "bg-gradient-to-b from-sky-400 to-sky-600 text-white"
+                          : "bg-gradient-to-b from-lime-400 to-lime-600 text-[#14320a]"
+                      }`}
+                    >
+                      {DUEL_KIND_LABELS[kind]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {modalPhase === "duel" && (
+              <div className="grid grid-cols-2 gap-2.5">
+                {(["won", "lost"] as DuelResult[]).map((result) => (
+                  <button
+                    key={result}
+                    onClick={() => onDuelResultPick(result)}
+                    className={`btn rounded-2xl py-9 text-lg ${
+                      result === "won"
+                        ? "bg-emerald-500/85 text-[#04150e]"
+                        : "bg-red-500/80 text-white"
+                    }`}
+                  >
+                    {DUEL_RESULT_LABELS[result]}
+                  </button>
+                ))}
               </div>
             )}
 

@@ -1,5 +1,4 @@
 import { MatchEvent, Player, Zone } from "./types";
-import { computeImpact, PlayerImpact } from "./impactScore";
 import { computeTeamTotals, TeamMatchTotals } from "./playerStats";
 
 export interface MatchInsight {
@@ -8,36 +7,25 @@ export interface MatchInsight {
 }
 
 export interface MatchSummary {
-  scoreLine: string; // שערים שלנו (אין יריב עדיין)
+  scoreLine: string;
   ourGoals: number;
-  motm: PlayerImpact | null;
   insights: MatchInsight[];
   team: TeamMatchTotals;
 }
 
-/** סיכום חכם לסוף משחק / ראש הדוח */
-export function buildMatchSummary(events: MatchEvent[], players: Player[]): MatchSummary {
+/** סיכום חכם לסוף משחק / ראש הדוח (ללא שחקן מצטיין) */
+export function buildMatchSummary(events: MatchEvent[], _players: Player[]): MatchSummary {
   const team = computeTeamTotals(events);
-  const impact = computeImpact(events, players).filter((p) => p.playerId !== null);
-  const motm = impact[0] ?? null;
-
   const insights: MatchInsight[] = [];
 
-  if (motm && motm.score !== 0) {
+  const totalLosses = team.losses.def + team.losses.mid + team.losses.att;
+  if (totalLosses >= 5) {
     insights.push({
-      text: `שחקן המשחק: ${motm.label} (${motm.score > 0 ? "+" : ""}${motm.score.toFixed(1)})`,
-      tone: "good",
-    });
-  }
-
-  const defLosses = team.losses.def;
-  if (defLosses >= 3) {
-    insights.push({
-      text: `${defLosses} איבודי כדור בשליש ההגנתי — שווה חיתוך וידאו`,
+      text: `${totalLosses} איבודים כלליים במשחק — שווה חיתוך וידאו`,
       tone: "warn",
     });
-  } else if (defLosses === 0 && events.length > 0) {
-    insights.push({ text: "אפס איבודי הגנה — הגנה נקייה", tone: "good" });
+  } else if (totalLosses === 0 && events.length > 0) {
+    insights.push({ text: "אפס איבודים — שליטה טובה בכדור", tone: "good" });
   }
 
   const attTackles = team.tackles.att;
@@ -62,6 +50,22 @@ export function buildMatchSummary(events: MatchEvent[], players: Player[]): Matc
     });
   }
 
+  const aerialTotal = team.aerialWon + team.aerialLost;
+  if (aerialTotal >= 3) {
+    insights.push({
+      text: `מאבקי אוויר: ${team.aerialWon} זכיות / ${team.aerialLost} הפסדים`,
+      tone: team.aerialWon >= team.aerialLost ? "good" : "warn",
+    });
+  }
+
+  const groundTotal = team.groundWon + team.groundLost;
+  if (groundTotal >= 3) {
+    insights.push({
+      text: `מאבקי קרקע: ${team.groundWon} זכיות / ${team.groundLost} הפסדים`,
+      tone: team.groundWon >= team.groundLost ? "good" : "warn",
+    });
+  }
+
   if (team.assists > 0 && team.goals > team.assists) {
     insights.push({
       text: `${team.goals} שערים · ${team.assists} בישולים`,
@@ -74,7 +78,6 @@ export function buildMatchSummary(events: MatchEvent[], players: Player[]): Matc
     });
   }
 
-  // מקסימום 3 תובנות
   const top = insights.slice(0, 3);
   if (top.length === 0 && events.length > 0) {
     top.push({ text: `${team.eventsTotal} אירועים נרשמו במשחק`, tone: "neutral" });
@@ -83,7 +86,6 @@ export function buildMatchSummary(events: MatchEvent[], players: Player[]): Matc
   return {
     scoreLine: `${team.goals}`,
     ourGoals: team.goals,
-    motm,
     insights: top,
     team,
   };
