@@ -20,6 +20,17 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
         a.half - b.half || a.match_minute - b.match_minute || a.created_at.localeCompare(b.created_at)
     );
 
+  const scoreText = `${stats.score > 0 ? "+" : ""}${stats.score.toFixed(1)}`;
+
+  const printPlayer = () => {
+    const prev = document.title;
+    document.title = `כרטיס שחקן — ${stats.label} · ציון ${scoreText}`;
+    window.print();
+    window.setTimeout(() => {
+      document.title = prev;
+    }, 1000);
+  };
+
   return (
     <div
       className="sheet-overlay fixed inset-0 z-50 flex items-end bg-black/60 backdrop-blur-sm sm:items-center sm:justify-center sm:p-6"
@@ -43,13 +54,32 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
             </p>
           </div>
           <div className="no-print flex shrink-0 items-center gap-1.5">
-            <button onClick={() => window.print()} className="btn btn-ghost h-9 px-3 text-sm">
+            <button onClick={printPlayer} className="btn btn-ghost h-9 px-3 text-sm">
               PDF
             </button>
             <button onClick={onClose} className="btn btn-ghost h-9 px-3 text-sm">
               סגור
             </button>
           </div>
+        </div>
+
+        <div className="card mb-3 border border-[var(--accent)]/30 bg-[var(--accent)]/10 p-4 text-center">
+          <p className="label mb-1">ציון Impact</p>
+          <p
+            className={`tabular text-5xl font-black ${
+              stats.score > 0
+                ? "text-[var(--accent)]"
+                : stats.score < 0
+                  ? "text-[var(--danger)]"
+                  : "text-[var(--muted)]"
+            }`}
+          >
+            {scoreText}
+          </p>
+          <p className="mt-1 text-xs text-[var(--muted)]">
+            {stats.minutesPlayed} דקות משחק
+            {stats.isStarter ? " · פותח" : " · ספסל"}
+          </p>
         </div>
 
         <div className="mb-3 grid grid-cols-3 gap-2">

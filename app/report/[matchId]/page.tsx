@@ -114,7 +114,12 @@ export default function ReportPage() {
       id === "full"
         ? matchReportToCsv(events, players, meta, statsOpts)
         : exportTableCsv(id, events, players, meta, statsOpts);
-    const label = id === "full" || id === "coach" ? "סיכום_משחק" : id;
+    const label =
+      id === "full" || id === "coach"
+        ? "סיכום_משחק"
+        : id === "scores"
+          ? "דוח_ציון"
+          : id;
     downloadCsv(`${label}_${match?.opponent ?? "match"}.csv`, csv);
   };
 
@@ -315,10 +320,39 @@ export default function ReportPage() {
                     <span className="mt-1 text-[10px] font-bold tabular text-[var(--accent)]">
                       {p.minutesPlayed}׳
                     </span>
+                    <span
+                      className={`mt-0.5 text-[11px] font-black tabular ${
+                        p.score > 0
+                          ? "text-[var(--accent)]"
+                          : p.score < 0
+                            ? "text-[var(--danger)]"
+                            : "text-[var(--muted)]"
+                      }`}
+                    >
+                      {p.score > 0 ? "+" : ""}
+                      {p.score.toFixed(1)}
+                    </span>
                   </button>
                 ))}
             </div>
           </section>
+
+          <MetricTable
+            title="דוח ציון (Impact)"
+            exportId="scores"
+            onExport={exportOne}
+            headers={["ציון", "דקות"]}
+            rows={playerStats}
+            sortKey={(r) => r.score}
+            cells={(r) => [Number(r.score.toFixed(1)), r.minutesPlayed]}
+            cellLabels={(r) => [
+              `${r.score > 0 ? "+" : ""}${r.score.toFixed(1)}`,
+              r.minutesPlayed,
+            ]}
+            onPlayer={setCardPlayerId}
+            accentCol={0}
+            showMinutes={false}
+          />
 
           <MetricTable
             title="דקות משחק"

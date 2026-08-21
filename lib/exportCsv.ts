@@ -27,6 +27,7 @@ function playerRef(row: PlayerMatchStats): (string | number | null)[] {
 
 export type ExportTableId =
   | "minutes"
+  | "scores"
   | "goals"
   | "assists"
   | "losses"
@@ -38,6 +39,11 @@ export type ExportTableId =
   | "full"
   | "events"
   | "season";
+
+function formatScore(score: number): string {
+  const n = Number(score.toFixed(1));
+  return n > 0 ? `+${n}` : String(n);
+}
 
 function tableMinutes(stats: PlayerMatchStats[]): string[] {
   const lines = ["=== דקות משחק ===", joinRow(["מס׳", "שם", "דקות", "פותח", "פירוט"])];
@@ -52,6 +58,32 @@ function tableMinutes(stats: PlayerMatchStats[]): string[] {
       ])
     );
   }
+  return lines;
+}
+
+function tableScores(stats: PlayerMatchStats[]): string[] {
+  const lines = [
+    "=== דוח ציון (Impact) ===",
+    joinRow(["מקום", "מס׳", "שם", "ציון", "דקות", "שערים", "בישולים", "חילוצים", "איבודים", "מס״מ"]),
+  ];
+  const sorted = [...stats]
+    .filter((r) => r.playerId !== null)
+    .sort((a, b) => b.score - a.score || b.minutesPlayed - a.minutesPlayed);
+  sorted.forEach((row, i) => {
+    lines.push(
+      joinRow([
+        i + 1,
+        ...playerRef(row),
+        formatScore(row.score),
+        row.minutesPlayed,
+        row.goals,
+        row.assists,
+        row.tacklesTotal,
+        row.lossesTotal,
+        row.keyPassesTotal,
+      ])
+    );
+  });
   return lines;
 }
 
@@ -246,29 +278,15 @@ export function coachSheetCsv(
   lines.push("תובנות");
   for (const i of summary.insights) lines.push(joinRow([i.text]));
   lines.push("");
-  lines.push(
-    joinRow([
-      "מס׳",
-      "שם",
-      "דקות",
-      "שערים",
-      "בישולים",
-      "איבודים כלליים",
-      "חילוצים",
-      "מס״מ",
-      "אוויר זכה",
-      "אוויר הפסיד",
-      "קרקע זכה",
-      "קרקע הפסיד",
-    ])
-  );
+  lines.push(joinRow(["מס׳", "שם", "ציון", "דקות", "שערים", "בישולים", "איבודים כלליים", "חילוצים", "מס״מ", "אוויר זכה", "אוויר הפסיד", "קרקע זכה", "קרקע הפסיד"]));
   for (const r of [...stats].sort(
-    (a, b) => b.goals - a.goals || b.assists - a.assists || b.score - a.score
+    (a, b) => b.score - a.score || b.goals - a.goals || b.assists - a.assists
   )) {
     lines.push(
       joinRow([
         r.shirtNumber,
         r.name,
+        formatScore(r.score),
         r.minutesPlayed,
         r.goals,
         r.assists,
@@ -307,6 +325,8 @@ export function exportTableCsv(
   switch (tableId) {
     case "minutes":
       return [...header, ...tableMinutes(stats)].join("\n");
+    case "scores":
+      return [...header, ...tableScores(stats)].join("\n");
     case "goals":
       return [...header, ...tableGoals(stats, team.goals)].join("\n");
     case "assists":
@@ -347,10 +367,11 @@ export function matchReportToCsv(
   }
 
   lines.push(...tableMinutes(stats), "");
+  lines.push(...tableScores(stats), "");
   lines.push(...tableGoals(stats, team.goals), "");
   lines.push(...tableAssists(stats, team.assists), "");
-  lines.push(...tableLosses(stats, team), "");
   lines.push(...tableTackles(stats, team), "");
+  lines.push(...tableLosses(stats, team), "");
   lines.push(...tableKeyPasses(stats, team.keyPasses), "");
   lines.push(...tableShots(stats, team), "");
   lines.push(...tableDuels(stats), "");
@@ -429,6 +450,7 @@ export function downloadCsv(filename: string, csv: string) {
 }
 
 export const EXPORT_TABLE_LABELS: Record<Exclude<ExportTableId, "full" | "season">, string> = {
+  scores: "דוח ציון",
   minutes: "דקות משחק",
   goals: "שערים",
   assists: "בישולים",
