@@ -31,6 +31,8 @@ type SortKey =
   | "keyPasses"
   | "tackles"
   | "lossesTotal"
+  | "aerialWon"
+  | "groundWon"
   | "xg"
   | "xa"
   | "matchesPlayed";
@@ -44,6 +46,8 @@ const SORT_META: Record<SortKey, { label: string; color: string; trendKey: keyof
   keyPasses: { label: "מס״מ", color: METRIC_COLORS.keyPasses, trendKey: "keyPasses" },
   tackles: { label: METRIC_LABELS.tackles, color: METRIC_COLORS.tackles, trendKey: "tackles" },
   lossesTotal: { label: METRIC_LABELS.losses, color: METRIC_COLORS.losses, trendKey: "losses" },
+  aerialWon: { label: "אוויר", color: "#38bdf8", trendKey: "score" },
+  groundWon: { label: "קרקע", color: "#a3e635", trendKey: "score" },
   xg: { label: METRIC_LABELS.xg, color: METRIC_COLORS.xg, trendKey: "xg" },
   xa: { label: METRIC_LABELS.xa, color: METRIC_COLORS.xa, trendKey: "xa" },
   matchesPlayed: { label: METRIC_LABELS.matchesPlayed, color: METRIC_COLORS.matchesPlayed, trendKey: "matchesPlayed" },
@@ -57,6 +61,8 @@ const METRIC_ORDER: SortKey[] = [
   "keyPasses",
   "tackles",
   "lossesTotal",
+  "aerialWon",
+  "groundWon",
   "xg",
   "xa",
   "matchesPlayed",
@@ -335,7 +341,11 @@ export default function SeasonPage() {
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
                     {row.matchesPlayed} מש׳ · {row.goals} שער · {row.assists} ביש · {row.keyPasses}{" "}
-                    מס״מ · {row.tackles} חילוץ · {row.lossesTotal} איבודים · xG{" "}
+                    מס״מ · {row.tackles} חילוץ · {row.lossesTotal} איבודים · אוויר{" "}
+                    <span className="text-emerald-400">{row.aerialWon}</span>/
+                    <span className="text-[var(--danger)]">{row.aerialLost}</span> · קרקע{" "}
+                    <span className="text-emerald-400">{row.groundWon}</span>/
+                    <span className="text-[var(--danger)]">{row.groundLost}</span> · xG{" "}
                     {roundMetric(row.xg)}
                   </p>
                 </div>
@@ -377,6 +387,8 @@ export default function SeasonPage() {
                       ["keyPasses", "מס״מ"],
                       ["tackles", "חילוץ"],
                       ["lossesTotal", "איבודים"],
+                      ["aerialWon", "אוויר W–L"],
+                      ["groundWon", "קרקע W–L"],
                       ["xg", "xG"],
                       ["xa", "xA"],
                       ["score", "ציון"],
@@ -412,6 +424,16 @@ export default function SeasonPage() {
                     <td className="tabular px-1.5 py-2">{row.keyPasses}</td>
                     <td className="tabular px-1.5 py-2">{row.tackles}</td>
                     <td className="tabular px-1.5 py-2 text-[var(--danger)]">{row.lossesTotal}</td>
+                    <td className="tabular px-1.5 py-2">
+                      <span className="text-emerald-400">{row.aerialWon}</span>
+                      <span className="text-[var(--muted-2)]">–</span>
+                      <span className="text-[var(--danger)]">{row.aerialLost}</span>
+                    </td>
+                    <td className="tabular px-1.5 py-2">
+                      <span className="text-emerald-400">{row.groundWon}</span>
+                      <span className="text-[var(--muted-2)]">–</span>
+                      <span className="text-[var(--danger)]">{row.groundLost}</span>
+                    </td>
                     <td className="tabular px-1.5 py-2">{roundMetric(row.xg)}</td>
                     <td className="tabular px-1.5 py-2">{roundMetric(row.xa)}</td>
                     <td

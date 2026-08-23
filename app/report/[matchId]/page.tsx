@@ -566,6 +566,7 @@ export default function ReportPage() {
         <PlayerCardSheet
           stats={selectedStats}
           events={events}
+          opponent={match?.opponent}
           onClose={() => setCardPlayerId(undefined)}
         />
       )}

@@ -3,16 +3,18 @@
 import { MatchEvent } from "@/lib/types";
 import { PlayerMatchStats } from "@/lib/playerStats";
 import { roundMetric } from "@/lib/advancedMetrics";
+import { explainImpact } from "@/lib/impactScore";
 import { ACTION_LABELS, ZONE_LABELS, SHOT_LABELS } from "@/lib/types";
 import type { ReactNode } from "react";
 
 interface Props {
   stats: PlayerMatchStats;
   events: MatchEvent[];
+  opponent?: string;
   onClose: () => void;
 }
 
-export function PlayerCardSheet({ stats, events, onClose }: Props) {
+export function PlayerCardSheet({ stats, events, opponent, onClose }: Props) {
   const playerEvents = events
     .filter((e) => e.player_id === stats.playerId)
     .sort(
@@ -21,6 +23,7 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
     );
 
   const scoreText = `${stats.score > 0 ? "+" : ""}${stats.score.toFixed(1)}`;
+  const impactRows = explainImpact(playerEvents);
 
   const printPlayer = () => {
     const prev = document.title;
@@ -51,6 +54,7 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
             </h2>
             <p className="mt-1 text-xs text-[var(--muted-2)]">
               {stats.minutesLabel || `${stats.minutesPlayed}׳`} · {stats.actionsTotal} פעולות
+              {opponent ? ` · מול ${opponent}` : ""}
             </p>
           </div>
           <div className="no-print flex shrink-0 items-center gap-1.5">
@@ -82,6 +86,54 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
           </p>
         </div>
 
+        {impactRows.length > 0 && (
+          <Section title="פירוט ציון Impact">
+            <ul className="flex flex-col gap-1">
+              {impactRows.map((row) => (
+                <li
+                  key={row.key}
+                  className="flex items-center justify-between rounded-xl bg-[var(--panel)] px-3 py-1.5 text-sm"
+                >
+                  <span>
+                    <span className="font-bold">{row.label}</span>
+                    <span className="text-[var(--muted-2)]">
+                      {" "}
+                      · {row.count} × {row.pointsEach > 0 ? "+" : ""}
+                      {row.pointsEach}
+                    </span>
+                  </span>
+                  <span
+                    className={`tabular font-black ${
+                      row.total > 0
+                        ? "text-[var(--accent)]"
+                        : row.total < 0
+                          ? "text-[var(--danger)]"
+                          : "text-[var(--muted)]"
+                    }`}
+                  >
+                    {row.total > 0 ? "+" : ""}
+                    {row.total.toFixed(1)}
+                  </span>
+                </li>
+              ))}
+              <li className="mt-1 flex items-center justify-between rounded-xl border border-[var(--border)] px-3 py-1.5 text-sm">
+                <span className="font-bold">סה״כ Impact</span>
+                <span
+                  className={`tabular font-black ${
+                    stats.score > 0
+                      ? "text-[var(--accent)]"
+                      : stats.score < 0
+                        ? "text-[var(--danger)]"
+                        : "text-[var(--muted)]"
+                  }`}
+                >
+                  {scoreText}
+                </span>
+              </li>
+            </ul>
+          </Section>
+        )}
+
         <div className="mb-3 grid grid-cols-3 gap-2">
           <BigStat value={stats.minutesPlayed} label="דקות" tone="accent" />
           <BigStat value={stats.goals} label="שערים" tone="violet" />
@@ -94,21 +146,17 @@ export function PlayerCardSheet({ stats, events, onClose }: Props) {
           <BigStat value={stats.lossesTotal} label="איבודים" tone="danger" />
         </div>
         <div className="mb-3 grid grid-cols-2 gap-2">
+          <BigStat value={stats.shotsTotal} label="איומים לשער" tone="info" />
+          <BigStat value={opponent?.trim() || "—"} label="יריבה" tone="cyan" />
+        </div>
+        <div className="mb-3 grid grid-cols-2 gap-2">
           <BigStat value={roundMetric(stats.xg)} label="xG" tone="info" />
           <BigStat value={roundMetric(stats.xa)} label="xA" tone="cyan" />
         </div>
 
         <div className="mb-3 grid grid-cols-2 gap-2">
-          <BigStat
-            value={`זכה ${stats.aerialWon} · הפסיד ${stats.aerialLost}`}
-            label="מאבקי אוויר"
-            tone="info"
-          />
-          <BigStat
-            value={`זכה ${stats.groundWon} · הפסיד ${stats.groundLost}`}
-            label="מאבקי קרקע"
-            tone="accent"
-          />
+          <DuelStat won={stats.aerialWon} lost={stats.aerialLost} label="מאבקי אוויר" />
+          <DuelStat won={stats.groundWon} lost={stats.groundLost} label="מאבקי קרקע" />
         </div>
 
         {/* פירוק אזורים */}
@@ -197,6 +245,18 @@ function BigStat({
   return (
     <div className="card p-3 text-center">
       <div className={`tabular text-3xl font-black ${color}`}>{value}</div>
+      <div className="mt-0.5 text-xs text-[var(--muted)]">{label}</div>
+    </div>
+  );
+}
+
+function DuelStat({ won, lost, label }: { won: number; lost: number; label: string }) {
+  return (
+    <div className="card p-3 text-center">
+      <div className="flex items-center justify-center gap-3 text-3xl font-black tabular">
+        <span className="text-emerald-400">W {won}</span>
+        <span className="text-[var(--danger)]">L {lost}</span>
+      </div>
       <div className="mt-0.5 text-xs text-[var(--muted)]">{label}</div>
     </div>
   );

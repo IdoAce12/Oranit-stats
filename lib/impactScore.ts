@@ -65,6 +65,77 @@ export function scoreForEvent(event: MatchEvent): number {
   }
 }
 
+export interface ImpactBreakdownRow {
+  key: string;
+  label: string;
+  count: number;
+  pointsEach: number;
+  total: number;
+}
+
+const BREAKDOWN_LABELS: Record<string, string> = {
+  goal: "שערים",
+  assist: "בישולים",
+  key_pass: "מסירות מפתח",
+  tackle_def: "חילוצים (הגנה)",
+  tackle_mid: "חילוצים (אמצע)",
+  tackle_att: "חילוצים (התקפה)",
+  shot_in_box: "איומים מתוך הרחבה",
+  shot_out_box: "איומים מחוץ לרחבה",
+  ball_loss_def: "איבודים (הגנה)",
+  ball_loss_mid: "איבודים (אמצע)",
+  ball_loss_att: "איבודים (התקפה)",
+  aerial_won: "מאבקי אוויר — זכייה",
+  aerial_lost: "מאבקי אוויר — הפסד",
+  ground_won: "מאבקי קרקע — זכייה",
+  ground_lost: "מאבקי קרקע — הפסד",
+};
+
+function breakdownKey(event: MatchEvent): string | null {
+  switch (event.action_type) {
+    case "goal":
+    case "assist":
+    case "key_pass":
+    case "aerial_won":
+    case "aerial_lost":
+    case "ground_won":
+    case "ground_lost":
+      return event.action_type;
+    case "tackle":
+      return `tackle_${event.zone ?? "mid"}`;
+    case "shot":
+      return event.shot_location === "in_box" ? "shot_in_box" : "shot_out_box";
+    case "ball_loss":
+      return `ball_loss_${event.zone ?? "mid"}`;
+    default:
+      return null;
+  }
+}
+
+/** מפרק את ציון ה-Impact לפי סוגי פעולה — איך הגענו לציון. */
+export function explainImpact(events: MatchEvent[]): ImpactBreakdownRow[] {
+  const map = new Map<string, ImpactBreakdownRow>();
+  for (const ev of events) {
+    const key = breakdownKey(ev);
+    if (!key) continue;
+    const pointsEach = scoreForEvent(ev);
+    const row = map.get(key);
+    if (row) {
+      row.count += 1;
+      row.total += pointsEach;
+    } else {
+      map.set(key, {
+        key,
+        label: BREAKDOWN_LABELS[key] ?? key,
+        count: 1,
+        pointsEach,
+        total: pointsEach,
+      });
+    }
+  }
+  return Array.from(map.values()).sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+}
+
 export interface PlayerImpact {
   player: Player | null;
   playerId: string | null;
@@ -182,6 +253,10 @@ export interface SeasonImpact {
   attLosses: number;
   shotsInBox: number;
   shotsOutBox: number;
+  aerialWon: number;
+  aerialLost: number;
+  groundWon: number;
+  groundLost: number;
   xg: number;
   xa: number;
   perMatch: number;
@@ -231,6 +306,10 @@ export function computeSeasonImpact(
         attLosses: 0,
         shotsInBox: 0,
         shotsOutBox: 0,
+        aerialWon: 0,
+        aerialLost: 0,
+        groundWon: 0,
+        groundLost: 0,
         xg: 0,
         xa: 0,
         perMatch: 0,
@@ -261,6 +340,10 @@ export function computeSeasonImpact(
       if (ev.shot_location === "in_box") entry.shotsInBox += 1;
       else entry.shotsOutBox += 1;
     }
+    if (ev.action_type === "aerial_won") entry.aerialWon += 1;
+    if (ev.action_type === "aerial_lost") entry.aerialLost += 1;
+    if (ev.action_type === "ground_won") entry.groundWon += 1;
+    if (ev.action_type === "ground_lost") entry.groundLost += 1;
     entry.xg += xgForEvent(ev);
     entry.xa += xaForEvent(ev);
   }
@@ -345,6 +428,10 @@ export interface PlayerMatchLine {
   losses: number;
   defLosses: number;
   shotsInBox: number;
+  aerialWon: number;
+  aerialLost: number;
+  groundWon: number;
+  groundLost: number;
   xg: number;
   xa: number;
   score: number;
@@ -379,6 +466,10 @@ export function computePlayerSeasonMatches(
         losses: 0,
         defLosses: 0,
         shotsInBox: 0,
+        aerialWon: 0,
+        aerialLost: 0,
+        groundWon: 0,
+        groundLost: 0,
         xg: 0,
         xa: 0,
         score: 0,
@@ -400,6 +491,10 @@ export function computePlayerSeasonMatches(
       if (ev.zone === "def") line.defLosses += 1;
     }
     if (ev.action_type === "shot" && ev.shot_location === "in_box") line.shotsInBox += 1;
+    if (ev.action_type === "aerial_won") line.aerialWon += 1;
+    if (ev.action_type === "aerial_lost") line.aerialLost += 1;
+    if (ev.action_type === "ground_won") line.groundWon += 1;
+    if (ev.action_type === "ground_lost") line.groundLost += 1;
     line.xg += xgForEvent(ev);
     line.xa += xaForEvent(ev);
   }

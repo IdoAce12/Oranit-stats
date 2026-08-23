@@ -4,6 +4,7 @@ import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
   computeSeasonMinutesByKey,
+  explainImpact,
   scoreForEvent,
 } from "./impactScore";
 import { action, makeEvent, makeMatch, makePlayer, makeSquadPlayer, makeSub } from "./testHelpers";
@@ -130,6 +131,40 @@ describe("computeSeasonImpact", () => {
     expect(row.defLosses).toBe(1);
     expect(row.midLosses).toBe(1);
     expect(row.attLosses).toBe(1);
+  });
+
+  it("סופר מאבקי אוויר וקרקע", () => {
+    const squad = [makeSquadPlayer({ id: "s1", name: "קשר" })];
+    const players = [makePlayer({ id: "p1", squad_player_id: "s1", name: "קשר" })];
+    const events = [
+      action("p1", "aerial_won"),
+      action("p1", "aerial_won"),
+      action("p1", "aerial_lost"),
+      action("p1", "ground_won"),
+      action("p1", "ground_lost"),
+    ];
+    const row = computeSeasonImpact(events, players, squad)[0];
+    expect(row.aerialWon).toBe(2);
+    expect(row.aerialLost).toBe(1);
+    expect(row.groundWon).toBe(1);
+    expect(row.groundLost).toBe(1);
+  });
+});
+
+describe("explainImpact", () => {
+  it("מפרק את הציון לפי סוגי פעולה", () => {
+    const events = [
+      action("p", "goal"),
+      action("p", "goal"),
+      action("p", "aerial_lost"),
+      action("p", "key_pass", { zone: "mid" }),
+    ];
+    const rows = explainImpact(events);
+    const goals = rows.find((r) => r.key === "goal")!;
+    expect(goals.count).toBe(2);
+    expect(goals.total).toBe(6);
+    const aerial = rows.find((r) => r.key === "aerial_lost")!;
+    expect(aerial.total).toBe(-0.5);
   });
 });
 

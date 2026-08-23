@@ -7,6 +7,7 @@ import { loadSeasonBundle } from "@/lib/db";
 import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
+  explainImpact,
 } from "@/lib/impactScore";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
@@ -78,6 +79,18 @@ export default function SeasonPlayerPage() {
     () => (seasonRow ? buildRadarData(seasonRow, allRows) : []),
     [seasonRow, allRows]
   );
+
+  const impactRows = useMemo(() => {
+    const ids = new Set(
+      players
+        .filter((p) => {
+          const key = p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
+          return key === playerKey;
+        })
+        .map((p) => p.id)
+    );
+    return explainImpact(events.filter((e) => e.player_id && ids.has(e.player_id)));
+  }, [players, events, playerKey]);
 
   const trendData = useMemo<TrendPoint[]>(
     () =>
@@ -183,6 +196,56 @@ export default function SeasonPlayerPage() {
         </section>
       )}
 
+      {impactRows.length > 0 && (
+        <section className="card mb-4 p-3">
+          <p className="label mb-2">פירוט ציון Impact</p>
+          <ul className="flex flex-col gap-1">
+            {impactRows.map((row) => (
+              <li
+                key={row.key}
+                className="flex items-center justify-between rounded-xl bg-[var(--panel)] px-3 py-1.5 text-sm"
+              >
+                <span>
+                  <span className="font-bold">{row.label}</span>
+                  <span className="text-[var(--muted-2)]">
+                    {" "}
+                    · {row.count} × {row.pointsEach > 0 ? "+" : ""}
+                    {row.pointsEach}
+                  </span>
+                </span>
+                <span
+                  className={`tabular font-black ${
+                    row.total > 0
+                      ? "text-[var(--accent)]"
+                      : row.total < 0
+                        ? "text-[var(--danger)]"
+                        : "text-[var(--muted)]"
+                  }`}
+                >
+                  {row.total > 0 ? "+" : ""}
+                  {row.total.toFixed(1)}
+                </span>
+                </li>
+            ))}
+            <li className="mt-1 flex items-center justify-between rounded-xl border border-[var(--border)] px-3 py-1.5 text-sm">
+              <span className="font-bold">סה״כ Impact</span>
+              <span
+                className={`tabular font-black ${
+                  seasonRow.score > 0
+                    ? "text-[var(--accent)]"
+                    : seasonRow.score < 0
+                      ? "text-[var(--danger)]"
+                      : "text-[var(--muted)]"
+                }`}
+              >
+                {seasonRow.score > 0 ? "+" : ""}
+                {seasonRow.score.toFixed(1)}
+              </span>
+            </li>
+          </ul>
+        </section>
+      )}
+
       <section className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
         <MiniStat label="שערים" value={seasonRow.goals} avg={avg(seasonRow.goals)} tone="accent" />
         <MiniStat label="בישולים" value={seasonRow.assists} avg={avg(seasonRow.assists)} tone="info" />
@@ -197,6 +260,18 @@ export default function SeasonPlayerPage() {
         />
         <MiniStat label="איומים רחבה" value={seasonRow.shotsInBox} avg={avg(seasonRow.shotsInBox)} />
         <MiniStat label="איומים חוץ" value={seasonRow.shotsOutBox} avg={avg(seasonRow.shotsOutBox)} />
+        <DuelSeasonStat
+          label="מאבקי אוויר"
+          won={seasonRow.aerialWon}
+          lost={seasonRow.aerialLost}
+          matches={seasonRow.matchesPlayed}
+        />
+        <DuelSeasonStat
+          label="מאבקי קרקע"
+          won={seasonRow.groundWon}
+          lost={seasonRow.groundLost}
+          matches={seasonRow.matchesPlayed}
+        />
         <MiniStat label="xG" value={roundMetric(seasonRow.xg)} avg={avg(seasonRow.xg)} tone="info" />
         <MiniStat label="xA" value={roundMetric(seasonRow.xa)} avg={avg(seasonRow.xa)} tone="info" />
       </section>
@@ -257,7 +332,11 @@ export default function SeasonPlayerPage() {
                   </p>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
                     {line.goals} שער · {line.assists} ביש · {line.keyPasses} מס״מ · {line.tackles}{" "}
-                    חילוץ · {line.losses} איבודים
+                    חילוץ · {line.losses} איבודים · אוויר{" "}
+                    <span className="text-emerald-400">{line.aerialWon}</span>/
+                    <span className="text-[var(--danger)]">{line.aerialLost}</span> · קרקע{" "}
+                    <span className="text-emerald-400">{line.groundWon}</span>/
+                    <span className="text-[var(--danger)]">{line.groundLost}</span>
                   </p>
                 </div>
                 <div
@@ -278,6 +357,32 @@ export default function SeasonPlayerPage() {
         </ul>
       )}
     </main>
+  );
+}
+
+function DuelSeasonStat({
+  label,
+  won,
+  lost,
+  matches,
+}: {
+  label: string;
+  won: number;
+  lost: number;
+  matches: number;
+}) {
+  const n = Math.max(matches, 1);
+  return (
+    <div className="card col-span-2 p-2.5 text-center sm:col-span-2">
+      <div className="flex items-center justify-center gap-3 text-xl font-black tabular">
+        <span className="text-emerald-400">W {won}</span>
+        <span className="text-[var(--danger)]">L {lost}</span>
+      </div>
+      <div className="text-[10px] text-[var(--muted)]">{label}</div>
+      <div className="text-[10px] text-[var(--muted-2)]">
+        {(won / n).toFixed(1)}W / {(lost / n).toFixed(1)}L למש׳
+      </div>
+    </div>
   );
 }
 

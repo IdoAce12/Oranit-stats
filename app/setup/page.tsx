@@ -7,7 +7,7 @@ import { LineupPitch } from "../components/LineupPitch";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 import { addPlayers, createMatch, listSquad } from "@/lib/db";
-import { LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
+import { DEFAULT_FORMATION_ID, FORMATIONS, FormationId, formationById, LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MATCH_TYPE_FULL_LABELS, MATCH_TYPE_ORDER, MatchType, SquadPlayer } from "@/lib/types";
@@ -33,6 +33,7 @@ export default function SetupPage() {
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [sel, setSel] = useState<Record<string, Selection>>({});
   const [slots, setSlots] = useState<(string | null)[]>(() => Array(LINEUP_SIZE).fill(null));
+  const [formationId, setFormationId] = useState<FormationId>(DEFAULT_FORMATION_ID);
   const [pickId, setPickId] = useState<string | null>(null);
   const [pickSlot, setPickSlot] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -394,12 +395,27 @@ export default function SetupPage() {
               הורד מהמגרש
             </button>
           )}
+          <p className="label mb-1.5">מערך</p>
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {FORMATIONS.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setFormationId(f.id)}
+                className={`btn h-8 px-2.5 text-xs ${formationId === f.id ? "btn-primary" : "btn-ghost"}`}
+              >
+                {f.label}
+                {f.defenders === 5 ? " · 5 הגנה" : ""}
+              </button>
+            ))}
+          </div>
           <LineupPitch
             occupants={occupants}
             onSlotClick={onSlotClick}
             highlightPlayerId={pickId}
             highlightSlot={pickSlot}
             showSlotLabels
+            formation={formationById(formationId).slots}
           />
           <p className="label mt-3 mb-2">
             {unplacedXi.length > 0 ? "פותחים שטרם מוקמו" : "כל הפותחים על המגרש"}

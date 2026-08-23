@@ -235,6 +235,24 @@ function ComparePageInner() {
                     <td className="tabular px-2 py-2 text-[var(--info)]">{bv ?? "—"}</td>
                   </tr>
                 ))}
+                <tr className="border-t border-[var(--border)]">
+                  <td className="px-2 py-2 text-right font-bold">מאבקי אוויר</td>
+                  <td className="px-2 py-2">
+                    <DuelWl won={a.aerialWon} lost={a.aerialLost} />
+                  </td>
+                  <td className="px-2 py-2">
+                    {b ? <DuelWl won={b.aerialWon} lost={b.aerialLost} /> : "—"}
+                  </td>
+                </tr>
+                <tr className="border-t border-[var(--border)]">
+                  <td className="px-2 py-2 text-right font-bold">מאבקי קרקע</td>
+                  <td className="px-2 py-2">
+                    <DuelWl won={a.groundWon} lost={a.groundLost} />
+                  </td>
+                  <td className="px-2 py-2">
+                    {b ? <DuelWl won={b.groundWon} lost={b.groundLost} /> : "—"}
+                  </td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -259,5 +277,15 @@ function ComparePageInner() {
         </>
       )}
     </main>
+  );
+}
+
+function DuelWl({ won, lost }: { won: number; lost: number }) {
+  return (
+    <span className="tabular font-black">
+      <span className="text-emerald-400">W {won}</span>
+      <span className="mx-1 text-[var(--muted-2)]">/</span>
+      <span className="text-[var(--danger)]">L {lost}</span>
+    </span>
   );
 }

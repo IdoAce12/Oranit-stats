@@ -1,6 +1,6 @@
 "use client";
 
-import { FORMATION_4_3_3, PitchOccupant } from "@/lib/formation";
+import { FORMATION_4_3_3, FormationSlot, PitchOccupant } from "@/lib/formation";
 
 interface Props {
   occupants: (PitchOccupant | null)[];
@@ -10,6 +10,7 @@ interface Props {
   /** מצב הקמה — מציגים תווית עמדה גם כשהמשבצת תפוסה */
   showSlotLabels?: boolean;
   disabled?: boolean;
+  formation?: FormationSlot[];
 }
 
 export function LineupPitch({
@@ -19,6 +20,7 @@ export function LineupPitch({
   highlightPlayerId = null,
   showSlotLabels = false,
   disabled = false,
+  formation = FORMATION_4_3_3,
 }: Props) {
   return (
     <div
@@ -51,7 +53,7 @@ export function LineupPitch({
         הגנה
       </span>
 
-      {FORMATION_4_3_3.map((node) => {
+      {formation.map((node) => {
         const player = occupants[node.slot] ?? null;
         const lit =
           highlightSlot === node.slot || (player != null && highlightPlayerId === player.id);

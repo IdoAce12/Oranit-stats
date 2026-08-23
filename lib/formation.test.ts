@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   autoAssignSlots,
   inferSlotGroup,
+  FORMATION_5_3_2,
   LINEUP_SIZE,
   resolveOccupants,
   slotOfPlayer,
@@ -52,6 +53,19 @@ describe("autoAssignSlots", () => {
     const slots = autoAssignSlots(players);
     const filled = slots.filter((s) => s !== null);
     expect(filled).toHaveLength(LINEUP_SIZE);
+  });
+
+  it("במערך 5-3-2 ממקם 5 שחקני הגנה", () => {
+    const players = [
+      { id: "d1", position: "בלם" },
+      { id: "d2", position: "בלם" },
+      { id: "d3", position: "מגן" },
+      { id: "d4", position: "מגן" },
+      { id: "d5", position: "בלם" },
+    ];
+    const slots = autoAssignSlots(players, FORMATION_5_3_2);
+    expect(slots.slice(0, 5).every((id) => id != null)).toBe(true);
+    expect(slots.slice(5).every((id) => id == null)).toBe(true);
   });
 });
 

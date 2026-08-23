@@ -16,7 +16,14 @@ import {
   recordSubstitution,
   updatePlayerSlots,
 } from "@/lib/db";
-import { resolveOccupants, slotOfPlayer } from "@/lib/formation";
+import {
+  DEFAULT_FORMATION_ID,
+  FORMATIONS,
+  FormationId,
+  formationById,
+  resolveOccupants,
+  slotOfPlayer,
+} from "@/lib/formation";
 import { clockDisplay, readClockState } from "@/lib/matchClock";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import {
@@ -74,6 +81,7 @@ const ACTION_BTN: Record<ActionType, string> = {
 
 type SubPhase = "out" | "in" | null;
 type ModalPhase = "action" | "zone" | "box" | "duel" | null;
+type PitchEditMode = "off" | "edit";
 
 export default function LivePage() {
   const params = useParams<{ matchId: string }>();
@@ -101,8 +109,8 @@ export default function LivePage() {
   const [subPhase, setSubPhase] = useState<SubPhase>(null);
   const [subOutId, setSubOutId] = useState<string | null>(null);
   const [subBusy, setSubBusy] = useState(false);
-  const [swapMode, setSwapMode] = useState(false);
-  const [swapFromId, setSwapFromId] = useState<string | null>(null);
+  const [pitchEdit, setPitchEdit] = useState(false);
+  const [formationId, setFormationId] = useState<FormationId>(DEFAULT_FORMATION_ID);
 
   const clockRef = useRef<{ half: Half; minute: number }>({ half: 1, minute: 0 });
 
@@ -375,16 +383,16 @@ export default function LivePage() {
     }
   };
 
-  const openSub = () => {
-    setSwapMode(false);
-    setSwapFromId(null);
+  const openPitchEdit = () => {
+    setPitchEdit(true);
     setSubPhase("out");
     setSubOutId(null);
     setNotice(null);
     closeModal();
   };
 
-  const closeSub = () => {
+  const closePitchEdit = () => {
+    setPitchEdit(false);
     setSubPhase(null);
     setSubOutId(null);
   };
@@ -437,7 +445,8 @@ export default function LivePage() {
         return synced;
       });
       tapFeedback();
-      closeSub();
+      setSubOutId(null);
+      setSubPhase("out");
     } catch {
       setNotice("חילוף נכשל — הרץ migration_v5.sql / migration_v6.sql ב-Supabase");
     } finally {
@@ -499,6 +508,23 @@ export default function LivePage() {
 
   const onPitchSlot = (_slot: number, player: { id: string } | null) => {
     if (!player) return;
+    if (pitchEdit) {
+      if (!subOutId) {
+        setSubOutId(player.id);
+        setSubPhase("in");
+        tapFeedback(8);
+        return;
+      }
+      if (subOutId === player.id) {
+        setSubOutId(null);
+        setSubPhase("out");
+        return;
+      }
+      void swapPitchSlots(subOutId, player.id);
+      setSubOutId(null);
+      setSubPhase("out");
+      return;
+    }
     if (subPhase === "out") {
       setSubOutId(player.id);
       setSubPhase("in");
@@ -506,21 +532,6 @@ export default function LivePage() {
       return;
     }
     if (subPhase === "in") return;
-    if (swapMode) {
-      if (!swapFromId) {
-        setSwapFromId(player.id);
-        tapFeedback(8);
-        return;
-      }
-      if (swapFromId === player.id) {
-        setSwapFromId(null);
-        return;
-      }
-      void swapPitchSlots(swapFromId, player.id);
-      setSwapFromId(null);
-      setSwapMode(false);
-      return;
-    }
     openPlayerActions(player.id);
   };
 
@@ -587,47 +598,41 @@ export default function LivePage() {
         }}
       />
 
-      {subPhase && (
+      {pitchEdit && (
         <div className="mt-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-3 py-2 text-sm">
           <div className="flex items-center justify-between gap-2">
             <p className="font-bold text-amber-200">
-              {subPhase === "out"
-                ? "חילוף — לחץ על מי שיוצא במגרש"
-                : `מי נכנס במקום #${players.find((p) => p.id === subOutId)?.shirt_number ?? "?"}? לחץ בספסל`}
+              {!subOutId
+                ? "לחץ על שחקן במגרש — אחר כך שחקן אחר להחלפת עמדה, או שחקן מהספסל לחילוף"
+                : `נבחר #${players.find((p) => p.id === subOutId)?.shirt_number ?? "?"} — לחץ במגרש להחלפת עמדה או בספסל לחילוף`}
             </p>
-            <button onClick={closeSub} className="btn btn-ghost h-7 shrink-0 px-3 text-xs">
-              בטל
-            </button>
-          </div>
-        </div>
-      )}
-
-      {swapMode && (
-        <div className="mt-3 rounded-2xl border border-sky-400/40 bg-sky-400/10 px-3 py-2 text-sm">
-          <div className="flex items-center justify-between gap-2">
-            <p className="font-bold text-sky-200">
-              {swapFromId
-                ? `בחר שחקן שני להחלפת עמדה עם #${players.find((p) => p.id === swapFromId)?.shirt_number ?? "?"}`
-                : "החלפת עמדות — לחץ על שני שחקנים במגרש"}
-            </p>
-            <button
-              onClick={() => {
-                setSwapMode(false);
-                setSwapFromId(null);
-              }}
-              className="btn btn-ghost h-7 shrink-0 px-3 text-xs"
-            >
-              בטל
+            <button onClick={closePitchEdit} className="btn btn-ghost h-7 shrink-0 px-3 text-xs">
+              סיום פעולות
             </button>
           </div>
         </div>
       )}
 
       <div className="mt-3">
+        <p className="label mb-1.5">מערך</p>
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {FORMATIONS.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => setFormationId(f.id)}
+              className={`btn h-8 px-2.5 text-xs ${formationId === f.id ? "btn-primary" : "btn-ghost"}`}
+            >
+              {f.label}
+              {f.defenders === 5 ? " · 5 הגנה" : ""}
+            </button>
+          ))}
+        </div>
         <LineupPitch
           occupants={occupants}
           onSlotClick={onPitchSlot}
-          highlightPlayerId={subOutId ?? swapFromId ?? modalPlayerId}
+          formation={formationById(formationId).slots}
+          highlightPlayerId={subOutId ?? modalPlayerId}
           disabled={subBusy}
         />
       </div>
@@ -646,12 +651,12 @@ export default function LivePage() {
           {benchPlayers.map((p) => (
             <button
               key={p.id}
-              disabled={subBusy || (subPhase !== null && subPhase !== "in")}
+              disabled={subBusy || (pitchEdit && !subOutId)}
               onClick={() => {
-                if (subPhase === "in") confirmSub(p.id);
+                if (pitchEdit && subOutId) confirmSub(p.id);
               }}
               className={`btn card shrink-0 flex-col px-3 py-2 ${
-                subPhase === "in" ? "border-[var(--accent)]/40" : ""
+                pitchEdit && subOutId ? "border-[var(--accent)]/40" : ""
               }`}
             >
               <span className="text-lg font-black tabular">{p.shirt_number}</span>
@@ -673,31 +678,17 @@ export default function LivePage() {
         ))}
       </div>
 
-      <div className="mt-2.5 grid grid-cols-2 gap-2.5">
-        <button
-          onClick={() => {
-            setSwapMode(false);
-            setSwapFromId(null);
-            openSub();
-          }}
-          className="btn btn-ghost rounded-2xl py-3 text-base font-extrabold"
-        >
-          ⟳ חילוף
-        </button>
-        <button
-          onClick={() => {
-            closeSub();
-            setSwapMode((v) => !v);
-            setSwapFromId(null);
-            closeModal();
-          }}
-          className={`btn rounded-2xl py-3 text-base font-extrabold ${
-            swapMode ? "btn-primary" : "btn-ghost"
-          }`}
-        >
-          החלף עמדות
-        </button>
-      </div>
+      <button
+        onClick={() => {
+          if (pitchEdit) closePitchEdit();
+          else openPitchEdit();
+        }}
+        className={`btn mt-2.5 w-full rounded-2xl py-3 text-base font-extrabold ${
+          pitchEdit ? "btn-primary" : "btn-ghost"
+        }`}
+      >
+        {pitchEdit ? "סיום פעולות" : "⟳ חילוף / החלפת עמדות"}
+      </button>
 
       <button onClick={() => setRosterOpen(true)} className="btn btn-ghost mt-2.5 w-full rounded-2xl py-3 text-base">
         סגל · {players.length}

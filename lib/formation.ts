@@ -1,4 +1,4 @@
-/** פורמציית 4-3-3 לשחקני שדה בלבד (בלי שוער) — 10 עמדות */
+/** פורמציות לשחקני שדה בלבד (בלי שוער) — 10 עמדות */
 
 export const LINEUP_SIZE = 10;
 
@@ -10,6 +10,16 @@ export interface FormationSlot {
   y: number;
   label: string;
   zone: PitchZone;
+}
+
+export type FormationId = "4-3-3" | "4-4-2" | "4-2-3-1" | "3-5-2" | "5-3-2" | "5-4-1";
+
+export interface FormationDef {
+  id: FormationId;
+  label: string;
+  /** כמה שחקנים בקו ההגנה */
+  defenders: number;
+  slots: FormationSlot[];
 }
 
 /** התקפה למעלה, הגנה למטה. x/y באחוזים ממרכז העיגול. */
@@ -26,11 +36,91 @@ export const FORMATION_4_3_3: FormationSlot[] = [
   { slot: 9, x: 16, y: 20, label: "שמאל התקפה", zone: "att" },
 ];
 
-const GROUP_SLOTS: Record<PitchZone, number[]> = {
-  def: [0, 1, 2, 3],
-  mid: [4, 5, 6],
-  att: [7, 8, 9],
-};
+export const FORMATION_4_4_2: FormationSlot[] = [
+  { slot: 0, x: 84, y: 76, label: "ימין הגנה", zone: "def" },
+  { slot: 1, x: 62, y: 80, label: "בלם", zone: "def" },
+  { slot: 2, x: 38, y: 80, label: "בלם", zone: "def" },
+  { slot: 3, x: 16, y: 76, label: "שמאל הגנה", zone: "def" },
+  { slot: 4, x: 84, y: 48, label: "ימין אמצע", zone: "mid" },
+  { slot: 5, x: 62, y: 50, label: "קשר", zone: "mid" },
+  { slot: 6, x: 38, y: 50, label: "קשר", zone: "mid" },
+  { slot: 7, x: 16, y: 48, label: "שמאל אמצע", zone: "mid" },
+  { slot: 8, x: 64, y: 16, label: "חלוץ", zone: "att" },
+  { slot: 9, x: 36, y: 16, label: "חלוץ", zone: "att" },
+];
+
+export const FORMATION_4_2_3_1: FormationSlot[] = [
+  { slot: 0, x: 84, y: 76, label: "ימין הגנה", zone: "def" },
+  { slot: 1, x: 62, y: 80, label: "בלם", zone: "def" },
+  { slot: 2, x: 38, y: 80, label: "בלם", zone: "def" },
+  { slot: 3, x: 16, y: 76, label: "שמאל הגנה", zone: "def" },
+  { slot: 4, x: 64, y: 56, label: "קשר אחורי", zone: "mid" },
+  { slot: 5, x: 36, y: 56, label: "קשר אחורי", zone: "mid" },
+  { slot: 6, x: 82, y: 32, label: "ימין התקפה", zone: "att" },
+  { slot: 7, x: 50, y: 34, label: "קשר התקפי", zone: "mid" },
+  { slot: 8, x: 18, y: 32, label: "שמאל התקפה", zone: "att" },
+  { slot: 9, x: 50, y: 14, label: "חלוץ", zone: "att" },
+];
+
+export const FORMATION_3_5_2: FormationSlot[] = [
+  { slot: 0, x: 70, y: 80, label: "בלם", zone: "def" },
+  { slot: 1, x: 50, y: 82, label: "בלם", zone: "def" },
+  { slot: 2, x: 30, y: 80, label: "בלם", zone: "def" },
+  { slot: 3, x: 88, y: 52, label: "ימין הגנה", zone: "mid" },
+  { slot: 4, x: 68, y: 48, label: "קשר", zone: "mid" },
+  { slot: 5, x: 50, y: 46, label: "קשר", zone: "mid" },
+  { slot: 6, x: 32, y: 48, label: "קשר", zone: "mid" },
+  { slot: 7, x: 12, y: 52, label: "שמאל הגנה", zone: "mid" },
+  { slot: 8, x: 64, y: 16, label: "חלוץ", zone: "att" },
+  { slot: 9, x: 36, y: 16, label: "חלוץ", zone: "att" },
+];
+
+export const FORMATION_5_3_2: FormationSlot[] = [
+  { slot: 0, x: 88, y: 70, label: "ימין הגנה", zone: "def" },
+  { slot: 1, x: 68, y: 80, label: "בלם", zone: "def" },
+  { slot: 2, x: 50, y: 82, label: "בלם", zone: "def" },
+  { slot: 3, x: 32, y: 80, label: "בלם", zone: "def" },
+  { slot: 4, x: 12, y: 70, label: "שמאל הגנה", zone: "def" },
+  { slot: 5, x: 72, y: 46, label: "קשר", zone: "mid" },
+  { slot: 6, x: 50, y: 44, label: "קשר", zone: "mid" },
+  { slot: 7, x: 28, y: 46, label: "קשר", zone: "mid" },
+  { slot: 8, x: 64, y: 16, label: "חלוץ", zone: "att" },
+  { slot: 9, x: 36, y: 16, label: "חלוץ", zone: "att" },
+];
+
+export const FORMATION_5_4_1: FormationSlot[] = [
+  { slot: 0, x: 88, y: 70, label: "ימין הגנה", zone: "def" },
+  { slot: 1, x: 68, y: 80, label: "בלם", zone: "def" },
+  { slot: 2, x: 50, y: 82, label: "בלם", zone: "def" },
+  { slot: 3, x: 32, y: 80, label: "בלם", zone: "def" },
+  { slot: 4, x: 12, y: 70, label: "שמאל הגנה", zone: "def" },
+  { slot: 5, x: 84, y: 46, label: "ימין אמצע", zone: "mid" },
+  { slot: 6, x: 62, y: 48, label: "קשר", zone: "mid" },
+  { slot: 7, x: 38, y: 48, label: "קשר", zone: "mid" },
+  { slot: 8, x: 16, y: 46, label: "שמאל אמצע", zone: "mid" },
+  { slot: 9, x: 50, y: 16, label: "חלוץ", zone: "att" },
+];
+
+export const FORMATIONS: FormationDef[] = [
+  { id: "4-3-3", label: "4-3-3", defenders: 4, slots: FORMATION_4_3_3 },
+  { id: "4-4-2", label: "4-4-2", defenders: 4, slots: FORMATION_4_4_2 },
+  { id: "4-2-3-1", label: "4-2-3-1", defenders: 4, slots: FORMATION_4_2_3_1 },
+  { id: "3-5-2", label: "3-5-2", defenders: 3, slots: FORMATION_3_5_2 },
+  { id: "5-3-2", label: "5-3-2", defenders: 5, slots: FORMATION_5_3_2 },
+  { id: "5-4-1", label: "5-4-1", defenders: 5, slots: FORMATION_5_4_1 },
+];
+
+export const DEFAULT_FORMATION_ID: FormationId = "4-3-3";
+
+export function formationById(id: FormationId): FormationDef {
+  return FORMATIONS.find((f) => f.id === id) ?? FORMATIONS[0];
+}
+
+export function groupSlotsOf(slots: FormationSlot[]): Record<PitchZone, number[]> {
+  const groups: Record<PitchZone, number[]> = { def: [], mid: [], att: [] };
+  for (const s of slots) groups[s.zone].push(s.slot);
+  return groups;
+}
 
 export function inferSlotGroup(position: string | null | undefined): PitchZone | null {
   if (!position) return null;
@@ -54,15 +144,19 @@ export interface SlotCandidate {
 }
 
 /** ממקם עד 10 שחקנים לפי עמדה טקסטואלית, ואז ממלא את השאר. */
-export function autoAssignSlots(players: SlotCandidate[]): (string | null)[] {
+export function autoAssignSlots(
+  players: SlotCandidate[],
+  formation: FormationSlot[] = FORMATION_4_3_3
+): (string | null)[] {
   const slots: (string | null)[] = Array(LINEUP_SIZE).fill(null);
   const taken = new Set<number>();
   const placed = new Set<string>();
+  const groups = groupSlotsOf(formation);
 
   for (const p of players) {
     const group = inferSlotGroup(p.position);
     if (!group) continue;
-    const slot = firstFree(GROUP_SLOTS[group], taken);
+    const slot = firstFree(groups[group], taken);
     if (slot == null) continue;
     slots[slot] = p.id;
     taken.add(slot);
