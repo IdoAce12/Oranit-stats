@@ -3,7 +3,6 @@
 import { MatchEvent } from "@/lib/types";
 import { PlayerMatchStats } from "@/lib/playerStats";
 import { roundMetric } from "@/lib/advancedMetrics";
-import { explainImpact } from "@/lib/impactScore";
 import { ACTION_LABELS, ZONE_LABELS, SHOT_LABELS } from "@/lib/types";
 import type { ReactNode } from "react";
 
@@ -23,7 +22,6 @@ export function PlayerCardSheet({ stats, events, opponent, onClose }: Props) {
     );
 
   const scoreText = `${stats.score > 0 ? "+" : ""}${stats.score.toFixed(1)}`;
-  const impactRows = explainImpact(playerEvents);
 
   const printPlayer = () => {
     const prev = document.title;
@@ -85,54 +83,6 @@ export function PlayerCardSheet({ stats, events, opponent, onClose }: Props) {
             {stats.isStarter ? " · פותח" : " · ספסל"}
           </p>
         </div>
-
-        {impactRows.length > 0 && (
-          <Section title="פירוט ציון Impact">
-            <ul className="flex flex-col gap-1">
-              {impactRows.map((row) => (
-                <li
-                  key={row.key}
-                  className="flex items-center justify-between rounded-xl bg-[var(--panel)] px-3 py-1.5 text-sm"
-                >
-                  <span>
-                    <span className="font-bold">{row.label}</span>
-                    <span className="text-[var(--muted-2)]">
-                      {" "}
-                      · {row.count} × {row.pointsEach > 0 ? "+" : ""}
-                      {row.pointsEach}
-                    </span>
-                  </span>
-                  <span
-                    className={`tabular font-black ${
-                      row.total > 0
-                        ? "text-[var(--accent)]"
-                        : row.total < 0
-                          ? "text-[var(--danger)]"
-                          : "text-[var(--muted)]"
-                    }`}
-                  >
-                    {row.total > 0 ? "+" : ""}
-                    {row.total.toFixed(1)}
-                  </span>
-                </li>
-              ))}
-              <li className="mt-1 flex items-center justify-between rounded-xl border border-[var(--border)] px-3 py-1.5 text-sm">
-                <span className="font-bold">סה״כ Impact</span>
-                <span
-                  className={`tabular font-black ${
-                    stats.score > 0
-                      ? "text-[var(--accent)]"
-                      : stats.score < 0
-                        ? "text-[var(--danger)]"
-                        : "text-[var(--muted)]"
-                  }`}
-                >
-                  {scoreText}
-                </span>
-              </li>
-            </ul>
-          </Section>
-        )}
 
         <div className="mb-3 grid grid-cols-3 gap-2">
           <BigStat value={stats.minutesPlayed} label="דקות" tone="accent" />

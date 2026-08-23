@@ -7,7 +7,6 @@ import { loadSeasonBundle } from "@/lib/db";
 import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
-  explainImpact,
 } from "@/lib/impactScore";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
@@ -79,18 +78,6 @@ export default function SeasonPlayerPage() {
     () => (seasonRow ? buildRadarData(seasonRow, allRows) : []),
     [seasonRow, allRows]
   );
-
-  const impactRows = useMemo(() => {
-    const ids = new Set(
-      players
-        .filter((p) => {
-          const key = p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
-          return key === playerKey;
-        })
-        .map((p) => p.id)
-    );
-    return explainImpact(events.filter((e) => e.player_id && ids.has(e.player_id)));
-  }, [players, events, playerKey]);
 
   const trendData = useMemo<TrendPoint[]>(
     () =>
@@ -193,56 +180,6 @@ export default function SeasonPlayerPage() {
         <section className="card mb-4 p-3">
           <p className="label mb-1">פרופיל רדאר מול הקבוצה</p>
           <RadarProfile data={radar} aLabel={seasonRow.label} />
-        </section>
-      )}
-
-      {impactRows.length > 0 && (
-        <section className="card mb-4 p-3">
-          <p className="label mb-2">פירוט ציון Impact</p>
-          <ul className="flex flex-col gap-1">
-            {impactRows.map((row) => (
-              <li
-                key={row.key}
-                className="flex items-center justify-between rounded-xl bg-[var(--panel)] px-3 py-1.5 text-sm"
-              >
-                <span>
-                  <span className="font-bold">{row.label}</span>
-                  <span className="text-[var(--muted-2)]">
-                    {" "}
-                    · {row.count} × {row.pointsEach > 0 ? "+" : ""}
-                    {row.pointsEach}
-                  </span>
-                </span>
-                <span
-                  className={`tabular font-black ${
-                    row.total > 0
-                      ? "text-[var(--accent)]"
-                      : row.total < 0
-                        ? "text-[var(--danger)]"
-                        : "text-[var(--muted)]"
-                  }`}
-                >
-                  {row.total > 0 ? "+" : ""}
-                  {row.total.toFixed(1)}
-                </span>
-                </li>
-            ))}
-            <li className="mt-1 flex items-center justify-between rounded-xl border border-[var(--border)] px-3 py-1.5 text-sm">
-              <span className="font-bold">סה״כ Impact</span>
-              <span
-                className={`tabular font-black ${
-                  seasonRow.score > 0
-                    ? "text-[var(--accent)]"
-                    : seasonRow.score < 0
-                      ? "text-[var(--danger)]"
-                      : "text-[var(--muted)]"
-                }`}
-              >
-                {seasonRow.score > 0 ? "+" : ""}
-                {seasonRow.score.toFixed(1)}
-              </span>
-            </li>
-          </ul>
         </section>
       )}
 
