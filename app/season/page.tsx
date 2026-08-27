@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { loadSeasonBundle } from "@/lib/db";
 import { downloadCsv, seasonTableCsv } from "@/lib/exportCsv";
+import { downloadTableauSeasonWorkbook } from "@/lib/tableauExport";
 import { computeSeasonImpact, SeasonImpact } from "@/lib/impactScore";
 import { computeTeamSeasonTrend, roundMetric } from "@/lib/advancedMetrics";
 import { withTimeout } from "@/lib/withTimeout";
@@ -16,6 +17,7 @@ import {
   MatchType,
   Player,
   SquadPlayer,
+  Substitution,
 } from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
@@ -79,8 +81,10 @@ export default function SeasonPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [substitutions, setSubstitutions] = useState<Substitution[]>([]);
   const [matchesCount, setMatchesCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("score");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
@@ -101,6 +105,7 @@ export default function SeasonPage() {
         setPlayers(bundle.players);
         setSquad(bundle.squad);
         setMatches(bundle.matches);
+        setSubstitutions(bundle.substitutions);
         setMatchesCount(bundle.matchesCount);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "שגיאה בטעינה"))
@@ -128,6 +133,11 @@ export default function SeasonPage() {
   const filteredPlayers = useMemo(
     () => (allowedMatchIds ? players.filter((p) => allowedMatchIds.has(p.match_id)) : players),
     [players, allowedMatchIds]
+  );
+  const filteredSubs = useMemo(
+    () =>
+      allowedMatchIds ? substitutions.filter((s) => allowedMatchIds.has(s.match_id)) : substitutions,
+    [substitutions, allowedMatchIds]
   );
 
   const typeCounts = useMemo(() => {
@@ -199,6 +209,22 @@ export default function SeasonPage() {
     downloadCsv("scout_season.csv", seasonTableCsv(rows));
   };
 
+  const exportTableau = () => {
+    if (filteredMatches.length === 0) return;
+    setExporting(true);
+    try {
+      downloadTableauSeasonWorkbook({
+        matches: filteredMatches,
+        events: filteredEvents,
+        players: filteredPlayers,
+        squad,
+        substitutions: filteredSubs,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
       <AppHeader
@@ -215,6 +241,15 @@ export default function SeasonPage() {
 
       <ConfigBanner />
 
+      <button
+        type="button"
+        onClick={exportTableau}
+        disabled={filteredMatches.length === 0 || exporting || loading}
+        className="btn btn-primary mb-3 w-full py-3 text-sm"
+      >
+        {exporting ? "מייצא..." : "⬇ ייצוא Excel שנתי ל-Tableau"}
+      </button>
+
       <div className="mb-3 flex gap-2">
         <button
           onClick={() => setView("cards")}
@@ -228,8 +263,13 @@ export default function SeasonPage() {
         >
           טבלה מלאה
         </button>
-        <button onClick={exportSeason} disabled={rows.length === 0} className="btn btn-ghost h-9 px-3 text-sm">
-          ⬇
+        <button
+          onClick={exportSeason}
+          disabled={rows.length === 0}
+          className="btn btn-ghost h-9 px-3 text-sm"
+          title="ייצוא CSV של הטבלה הנוכחית"
+        >
+          CSV
         </button>
         <Link href="/season/compare" className="btn btn-ghost h-9 px-3 text-sm">
           H2H
