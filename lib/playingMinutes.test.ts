@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
+import {
+  computePitchStints,
+  computePlayingMinutes,
+  resolveFinalMinute,
+  wasOnPitchAt,
+} from "./playingMinutes";
 import { makeMatch, makePlayer, makeSub } from "./testHelpers";
 
 describe("resolveFinalMinute", () => {
@@ -54,5 +59,22 @@ describe("computePlayingMinutes", () => {
     expect(mins.get("out")!.subbedOff).toBe(true);
     expect(mins.get("in")!.minutesPlayed).toBe(20);
     expect(mins.get("in")!.cameOnAsSub).toBe(true);
+  });
+});
+
+describe("wasOnPitchAt", () => {
+  it("חילוף בדקה T: היוצא כבר בחוץ, הנכנס על המגרש", () => {
+    const players = [
+      makePlayer({ id: "out", is_starter: true }),
+      makePlayer({ id: "in", is_starter: false, on_pitch: false }),
+    ];
+    const subs = [makeSub({ player_out_id: "out", player_in_id: "in", half: 2, match_minute: 25 })];
+    const stints = computePitchStints(players, subs, 90);
+    expect(wasOnPitchAt(stints.get("out")!, 69, 90)).toBe(true);
+    expect(wasOnPitchAt(stints.get("out")!, 70, 90)).toBe(false);
+    expect(wasOnPitchAt(stints.get("in")!, 70, 90)).toBe(true);
+    expect(wasOnPitchAt(stints.get("in")!, 69, 90)).toBe(false);
+    expect(wasOnPitchAt(stints.get("out")!, 90, 90)).toBe(false);
+    expect(wasOnPitchAt(stints.get("in")!, 90, 90)).toBe(true);
   });
 });

@@ -90,6 +90,60 @@ describe("computeSeasonImpact", () => {
     expect(row.perMatch).toBeCloseTo(4);
   });
 
+  it("מאחד מחליף בלי squad_player_id עם שחקן הסגל לפי שם ומספר", () => {
+    const squad = [makeSquadPlayer({ id: "sq1", shirt_number: 15, name: "מחליף" })];
+    const players = [
+      makePlayer({
+        id: "league",
+        match_id: "m-league",
+        squad_player_id: "sq1",
+        shirt_number: 15,
+        name: "מחליף",
+      }),
+      makePlayer({
+        id: "cup-sub",
+        match_id: "m-cup",
+        squad_player_id: null,
+        shirt_number: 15,
+        name: "מחליף",
+        is_starter: false,
+      }),
+    ];
+    const events = [
+      action("league", "goal", { match_id: "m-league" }),
+      action("cup-sub", "assist", { match_id: "m-cup" }),
+    ];
+    const rows = computeSeasonImpact(events, players, squad);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].key).toBe("sq:sq1");
+    expect(rows[0].goals).toBe(1);
+    expect(rows[0].assists).toBe(1);
+    expect(rows[0].matchesPlayed).toBe(2);
+  });
+
+  it("בסינון גביע סופר אירועים שמזהה השחקן שייך למשחק אחר", () => {
+    const squad = [makeSquadPlayer({ id: "sq1", shirt_number: 15, name: "מחליף" })];
+    const leaguePlayer = makePlayer({
+      id: "league-id",
+      match_id: "m-league",
+      squad_player_id: "sq1",
+      shirt_number: 15,
+      name: "מחליף",
+    });
+    const cupSub = makePlayer({
+      id: "cup-id",
+      match_id: "m-cup",
+      squad_player_id: null,
+      shirt_number: 15,
+      name: "מחליף",
+      is_starter: false,
+    });
+    const events = [action("league-id", "goal", { match_id: "m-cup" })];
+    const rows = computeSeasonImpact(events, [cupSub], squad, [leaguePlayer, cupSub]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].goals).toBe(1);
+  });
+
   it("ממיין את השחקנים לפי ציון יורד", () => {
     const squad = [
       makeSquadPlayer({ id: "s1", shirt_number: 1, name: "נמוך" }),

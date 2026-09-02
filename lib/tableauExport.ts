@@ -1,4 +1,5 @@
 import { computePlayerMatchStats, computeTeamTotals } from "./playerStats";
+import { playerKeyOf } from "./playerKey";
 import { Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "./types";
 import { buildXlsx, downloadXlsx, XlsxCell } from "./xlsxWorkbook";
 import { roundMetric } from "./advancedMetrics";
@@ -102,10 +103,6 @@ export interface TableauSeasonTables {
   matches: TableauMatchRow[];
   playerSeason: TableauPlayerSeasonRow[];
   playerMatch: TableauPlayerMatchRow[];
-}
-
-function playerKeyOf(p: Player): string {
-  return p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
 }
 
 function rate(won: number, lost: number): number | null {
@@ -234,7 +231,7 @@ export function buildTableauSeasonTables(input: TableauSeasonInput): TableauSeas
         match_date: match.match_date || "",
         opponent: match.opponent,
         match_type: matchTypeEn(match.match_type),
-        player_key: playerKeyOf(player),
+        player_key: playerKeyOf(player, input.squad),
         player_name: displayName(player, squadById),
         squad_number: shirtOf(player, squadById),
         position: positionOf(player, squadById),

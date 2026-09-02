@@ -6,7 +6,9 @@ import { RadarProfile } from "../../components/RadarProfile";
 import { TrendChart, TrendPoint } from "../../components/TrendChart";
 import { AppHeader } from "../../components/AppHeader";
 import { PageSkeleton } from "../../components/Skeleton";
+import { MatchTypeChips, RateModeToggle } from "../../components/SeasonFilters";
 import { loadSeasonBundle } from "@/lib/db";
+import { computeAttackingPressByKey } from "@/lib/attackingPress";
 import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
 import {
   computePlayerSeasonMatches,
@@ -14,10 +16,14 @@ import {
   computeSeasonMinutesByKey,
   PlayerMatchLine,
 } from "@/lib/impactScore";
+import { formatMatchOption, matchIdsForTypes } from "@/lib/matchFilter";
+import { findRowByPlayerKey } from "@/lib/playerKey";
+import { attributeMatchEvents } from "@/lib/eventAttribution";
+import { formatRate, RateMode, rateOf, scaleSeasonForRadar } from "@/lib/rates";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { withTimeout } from "@/lib/withTimeout";
 import { COMPARE_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
-import { Match, MatchEvent, Player, SquadPlayer, Substitution } from "@/lib/types";
+import { Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "@/lib/types";
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -82,6 +88,9 @@ function ComparePageInner() {
   const [aKey, setAKey] = useState("");
   const [bKey, setBKey] = useState("");
   const [compareMetric, setCompareMetric] = useState<MetricKey>("score");
+  const [selectedTypes, setSelectedTypes] = useState<MatchType[]>([]);
+  const [matchId, setMatchId] = useState("all");
+  const [rateMode, setRateMode] = useState<RateMode>("total");
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -101,22 +110,134 @@ function ComparePageInner() {
       .finally(() => setLoading(false));
   }, []);
 
-  const rows = useMemo(() => computeSeasonImpact(events, players, squad), [events, players, squad]);
-  const a = rows.find((r) => r.key === aKey) ?? null;
-  const b = rows.find((r) => r.key === bKey) ?? null;
-  const radar = useMemo(
-    () => (a ? buildRadarData(a, rows, b) : []),
-    [a, b, rows]
+  const typeCounts = useMemo(() => {
+    const counts: Record<MatchType, number> = { league: 0, cup: 0, friendly: 0 };
+    for (const m of matches) counts[m.match_type ?? "league"] += 1;
+    return counts;
+  }, [matches]);
+
+  const typeMatchIds = useMemo(
+    () => matchIdsForTypes(matches, selectedTypes),
+    [matches, selectedTypes]
   );
 
+  const typeFilteredMatches = useMemo(
+    () =>
+      [...(typeMatchIds ? matches.filter((m) => typeMatchIds.has(m.id)) : matches)].sort((a, b) =>
+        (b.match_date || "").localeCompare(a.match_date || "")
+      ),
+    [matches, typeMatchIds]
+  );
+
+  useEffect(() => {
+    if (matchId === "all") return;
+    if (!typeFilteredMatches.some((m) => m.id === matchId)) setMatchId("all");
+  }, [typeFilteredMatches, matchId]);
+
+  const allowedMatchIds = useMemo(() => {
+    if (matchId !== "all") return new Set([matchId]);
+    return typeMatchIds;
+  }, [matchId, typeMatchIds]);
+
+  const filteredMatches = useMemo(
+    () => (allowedMatchIds ? matches.filter((m) => allowedMatchIds.has(m.id)) : matches),
+    [matches, allowedMatchIds]
+  );
+  const filteredEvents = useMemo(
+    () => (allowedMatchIds ? events.filter((e) => allowedMatchIds.has(e.match_id)) : events),
+    [events, allowedMatchIds]
+  );
+  const filteredPlayers = useMemo(
+    () => (allowedMatchIds ? players.filter((p) => allowedMatchIds.has(p.match_id)) : players),
+    [players, allowedMatchIds]
+  );
+  const filteredSubs = useMemo(
+    () => (allowedMatchIds ? subs.filter((s) => allowedMatchIds.has(s.match_id)) : subs),
+    [subs, allowedMatchIds]
+  );
+
+  const statsEvents = useMemo(
+    () =>
+      attributeMatchEvents(
+        filteredEvents,
+        filteredPlayers,
+        filteredSubs,
+        filteredMatches,
+        squad,
+        players
+      ),
+    [filteredEvents, filteredPlayers, filteredSubs, filteredMatches, squad, players]
+  );
+
+  const rows = useMemo(
+    () => computeSeasonImpact(statsEvents, filteredPlayers, squad, players),
+    [statsEvents, filteredPlayers, squad, players]
+  );
+
+  const playerOptions = useMemo(() => {
+    return [...rows].sort((x, y) => {
+      const an = x.shirtNumber ?? 999;
+      const bn = y.shirtNumber ?? 999;
+      if (an !== bn) return an - bn;
+      return x.label.localeCompare(y.label, "he");
+    });
+  }, [rows]);
+
+  const a = findRowByPlayerKey(rows, aKey, filteredPlayers, squad);
+  const b = findRowByPlayerKey(rows, bKey, filteredPlayers, squad);
+
+  const minutesByKey = useMemo(
+    () =>
+      computeSeasonMinutesByKey(
+        filteredPlayers,
+        filteredSubs,
+        filteredMatches,
+        filteredEvents,
+        squad
+      ),
+    [filteredPlayers, filteredSubs, filteredMatches, filteredEvents, squad]
+  );
+  const pressByKey = useMemo(
+    () =>
+      computeAttackingPressByKey(
+        statsEvents,
+        filteredPlayers,
+        filteredSubs,
+        filteredMatches,
+        squad
+      ),
+    [statsEvents, filteredPlayers, filteredSubs, filteredMatches, squad]
+  );
+
+  const aMinutes = a ? minutesByKey.get(a.key) ?? minutesByKey.get(aKey) ?? 0 : 0;
+  const bMinutes = b ? minutesByKey.get(b.key) ?? minutesByKey.get(bKey) ?? 0 : 0;
+  const aPress = a ? pressByKey.get(a.key) ?? pressByKey.get(aKey) : undefined;
+  const bPress = b ? pressByKey.get(b.key) ?? pressByKey.get(bKey) : undefined;
+
+  const radar = useMemo(() => {
+    if (!a) return [];
+    const pool = rows.map((r) =>
+      scaleSeasonForRadar(r, minutesByKey.get(r.key) ?? 0, rateMode)
+    );
+    const aScaled = scaleSeasonForRadar(a, aMinutes, rateMode);
+    const bScaled = b ? scaleSeasonForRadar(b, bMinutes, rateMode) : null;
+    return buildRadarData(aScaled, pool, bScaled);
+  }, [a, b, rows, minutesByKey, rateMode, aMinutes, bMinutes]);
+
   const aLines = useMemo(
-    () => (a ? computePlayerSeasonMatches(a.key, events, players, matches) : []),
-    [a, events, players, matches]
+    () =>
+      aKey
+        ? computePlayerSeasonMatches(aKey, statsEvents, players, filteredMatches, squad)
+        : [],
+    [aKey, statsEvents, players, filteredMatches, squad]
   );
 
   const bLines = useMemo(
-    () => (b ? computePlayerSeasonMatches(b.key, events, players, matches) : []),
-    [b, events, players, matches]
+    () =>
+      bKey
+        ? computePlayerSeasonMatches(bKey, statsEvents, players, filteredMatches, squad)
+        : [],
+    [bKey, statsEvents, players, filteredMatches, squad]
   );
 
   const compareTrend = useMemo<TrendPoint[]>(() => {
@@ -146,12 +267,20 @@ function ComparePageInner() {
     [a, b]
   );
 
-  const minutesByKey = useMemo(
-    () => computeSeasonMinutesByKey(players, subs, matches, events),
-    [players, subs, matches, events]
+  const allSeasonRows = useMemo(
+    () => computeSeasonImpact(events, players, squad),
+    [events, players, squad]
   );
-  const aMinutes = a ? minutesByKey.get(a.key) ?? 0 : 0;
-  const bMinutes = b ? minutesByKey.get(b.key) ?? 0 : 0;
+
+  const selectedALabel =
+    a?.label ??
+    playerOptions.find((r) => r.key === aKey)?.label ??
+    findRowByPlayerKey(allSeasonRows, aKey, players, squad)?.label;
+  const selectedBLabel =
+    b?.label ??
+    playerOptions.find((r) => r.key === bKey)?.label ??
+    findRowByPlayerKey(allSeasonRows, bKey, players, squad)?.label;
+  const singleMatch = matchId !== "all";
 
   if (loading) {
     return (
@@ -164,17 +293,46 @@ function ComparePageInner() {
 
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
-      <AppHeader title="השוואת שחקנים" subtitle="Head to Head" backHref={backHref} />
+      <AppHeader
+        title="השוואת שחקנים"
+        subtitle={singleMatch ? "משחק בודד" : "Head to Head"}
+        backHref={backHref}
+      />
       {error && <p className="mb-3 text-[var(--danger)]">{error}</p>}
+
+      <MatchTypeChips
+        selected={selectedTypes}
+        onChange={setSelectedTypes}
+        typeCounts={typeCounts}
+        total={matches.length}
+      />
+
+      <label className="mb-3 flex flex-col gap-1">
+        <span className="label">משחק</span>
+        <select value={matchId} onChange={(e) => setMatchId(e.target.value)} className="field w-full">
+          <option value="all">כל המשחקים במסנן ({typeFilteredMatches.length})</option>
+          {typeFilteredMatches.map((m) => (
+            <option key={m.id} value={m.id}>
+              {formatMatchOption(m)}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <RateModeToggle mode={rateMode} onChange={setRateMode} />
 
       <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
         <label className="flex flex-col gap-1">
           <span className="label">שחקן א׳</span>
           <select value={aKey} onChange={(e) => setAKey(e.target.value)} className="field w-full">
             <option value="">בחר שחקן</option>
-            {rows.map((r) => (
+            {aKey && !playerOptions.some((r) => r.key === aKey) && (
+              <option value={aKey}>{selectedALabel ?? aKey}</option>
+            )}
+            {playerOptions.map((r) => (
               <option key={r.key} value={r.key}>
                 {r.label}
+                {singleMatch ? ` · ${minutesByKey.get(r.key) ?? 0}׳` : ""}
               </option>
             ))}
           </select>
@@ -183,25 +341,42 @@ function ComparePageInner() {
           <span className="label">שחקן ב׳</span>
           <select value={bKey} onChange={(e) => setBKey(e.target.value)} className="field w-full">
             <option value="">בחר שחקן</option>
-            {rows.map((r) => (
+            {bKey && !playerOptions.some((r) => r.key === bKey) && (
+              <option value={bKey}>{selectedBLabel ?? bKey}</option>
+            )}
+            {playerOptions.map((r) => (
               <option key={r.key} value={r.key} disabled={r.key === aKey}>
                 {r.label}
+                {singleMatch ? ` · ${minutesByKey.get(r.key) ?? 0}׳` : ""}
               </option>
             ))}
           </select>
         </label>
       </div>
 
-      {!a && (
+      {!aKey && (
         <div className="card p-6 text-center text-sm text-[var(--muted)]">
-          בחר שני שחקנים מהסגל כדי להשוות רדאר, xG ומגמה.
+          בחר שני שחקנים מהסגל כדי להשוות רדאר, xG ומגמה. אפשר לצמצם לליגה/גביע/אימון או למשחק בודד.
+        </div>
+      )}
+
+      {aKey && !a && (
+        <div className="card p-6 text-center text-sm text-[var(--muted)]">
+          {selectedALabel ?? "השחקן"} לא שותף במסנן שנבחר.
         </div>
       )}
 
       {a && (
         <>
+          {bKey && !b && (
+            <p className="mb-3 text-sm text-[var(--muted)]">
+              {selectedBLabel ?? "שחקן ב׳"} לא שותף במסנן שנבחר — מוצג רק שחקן א׳.
+            </p>
+          )}
           <section className="card mb-4 p-3">
-            <p className="label mb-1">פרופיל רדאר (אחוזון מול הקבוצה)</p>
+            <p className="label mb-1">
+              פרופיל רדאר ({rateMode === "per90" ? "אחוזון לפי קצב ל־90׳" : "אחוזון מול הקבוצה"})
+            </p>
             <RadarProfile data={radar} aLabel={a.label} bLabel={b?.label} />
           </section>
 
@@ -209,7 +384,9 @@ function ComparePageInner() {
             <table className="w-full border-collapse text-center text-sm">
               <thead>
                 <tr className="text-[11px] text-[var(--muted)]">
-                  <th className="px-2 py-2 text-right">מדד</th>
+                  <th className="px-2 py-2 text-right">
+                    מדד{rateMode === "per90" ? " · ל־90׳" : ""}
+                  </th>
                   <th className="px-2 py-2">{a.label}</th>
                   <th className="px-2 py-2">{b?.label ?? "—"}</th>
                 </tr>
@@ -217,17 +394,31 @@ function ComparePageInner() {
               <tbody>
                 {(
                   [
-                    ["משחקים", a.matchesPlayed, b?.matchesPlayed],
-                    ["דקות (עונה)", `${aMinutes}׳`, b ? `${bMinutes}׳` : null],
-                    ["שערים", a.goals, b?.goals],
-                    ["בישולים", a.assists, b?.assists],
-                    ["מס״מ", a.keyPasses, b?.keyPasses],
-                    ["חילוצים", a.tackles, b?.tackles],
-                    ["איבודים", a.lossesTotal, b?.lossesTotal],
-                    ["xG", roundMetric(a.xg), b ? roundMetric(b.xg) : null],
-                    ["xA", roundMetric(a.xa), b ? roundMetric(b.xa) : null],
-                    ["Impact", a.score.toFixed(1), b?.score.toFixed(1)],
-                  ] as [string, string | number, string | number | null | undefined][]
+                    ["משחקים", String(a.matchesPlayed), b ? String(b.matchesPlayed) : null],
+                    ["דקות", `${aMinutes}׳`, b ? `${bMinutes}׳` : null],
+                    ["שערים", formatRate(a.goals, aMinutes, rateMode), b ? formatRate(b.goals, bMinutes, rateMode) : null],
+                    ["בישולים", formatRate(a.assists, aMinutes, rateMode), b ? formatRate(b.assists, bMinutes, rateMode) : null],
+                    ["מס״מ", formatRate(a.keyPasses, aMinutes, rateMode), b ? formatRate(b.keyPasses, bMinutes, rateMode) : null],
+                    ["חילוצים", formatRate(a.tackles, aMinutes, rateMode), b ? formatRate(b.tackles, bMinutes, rateMode) : null],
+                    [
+                      "לחץ התקפי",
+                      formatRate(aPress?.press ?? 0, aMinutes, rateMode),
+                      b ? formatRate(bPress?.press ?? 0, bMinutes, rateMode) : null,
+                    ],
+                    [
+                      "חילוץ התק׳",
+                      formatRate(aPress?.attTackles ?? 0, aMinutes, rateMode),
+                      b ? formatRate(bPress?.attTackles ?? 0, bMinutes, rateMode) : null,
+                    ],
+                    ["איבודים", formatRate(a.lossesTotal, aMinutes, rateMode), b ? formatRate(b.lossesTotal, bMinutes, rateMode) : null],
+                    ["xG", formatRate(a.xg, aMinutes, rateMode, 2), b ? formatRate(b.xg, bMinutes, rateMode, 2) : null],
+                    ["xA", formatRate(a.xa, aMinutes, rateMode, 2), b ? formatRate(b.xa, bMinutes, rateMode, 2) : null],
+                    [
+                      "Impact",
+                      rateOf(a.score, aMinutes, rateMode).toFixed(1),
+                      b ? rateOf(b.score, bMinutes, rateMode).toFixed(1) : null,
+                    ],
+                  ] as [string, string, string | null][]
                 ).map(([label, av, bv]) => (
                   <tr key={label} className="border-t border-[var(--border)]">
                     <td className="px-2 py-2 text-right font-bold">{label}</td>
@@ -238,26 +429,49 @@ function ComparePageInner() {
                 <tr className="border-t border-[var(--border)]">
                   <td className="px-2 py-2 text-right font-bold">מאבקי אוויר</td>
                   <td className="px-2 py-2">
-                    <DuelWl won={a.aerialWon} lost={a.aerialLost} />
+                    <DuelWl
+                      won={rateOf(a.aerialWon, aMinutes, rateMode)}
+                      lost={rateOf(a.aerialLost, aMinutes, rateMode)}
+                    />
                   </td>
                   <td className="px-2 py-2">
-                    {b ? <DuelWl won={b.aerialWon} lost={b.aerialLost} /> : "—"}
+                    {b ? (
+                      <DuelWl
+                        won={rateOf(b.aerialWon, bMinutes, rateMode)}
+                        lost={rateOf(b.aerialLost, bMinutes, rateMode)}
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
                 <tr className="border-t border-[var(--border)]">
                   <td className="px-2 py-2 text-right font-bold">מאבקי קרקע</td>
                   <td className="px-2 py-2">
-                    <DuelWl won={a.groundWon} lost={a.groundLost} />
+                    <DuelWl
+                      won={rateOf(a.groundWon, aMinutes, rateMode)}
+                      lost={rateOf(a.groundLost, aMinutes, rateMode)}
+                    />
                   </td>
                   <td className="px-2 py-2">
-                    {b ? <DuelWl won={b.groundWon} lost={b.groundLost} /> : "—"}
+                    {b ? (
+                      <DuelWl
+                        won={rateOf(b.groundWon, bMinutes, rateMode)}
+                        lost={rateOf(b.groundLost, bMinutes, rateMode)}
+                      />
+                    ) : (
+                      "—"
+                    )}
                   </td>
                 </tr>
               </tbody>
             </table>
+            <p className="mt-2 px-1 text-[11px] text-[var(--muted-2)]">
+              לחץ התקפי: חילוצי הקבוצה בשליש ההתקפי בזמן ששיחק כשחקן התקפה. חילוץ התק׳: החילוצים האישיים שלו שם.
+            </p>
           </div>
 
-          {compareTrend.length > 0 && (
+          {!singleMatch && compareTrend.length > 0 && (
             <section className="card p-3">
               <p className="label mb-2">מגמת השוואה — {METRIC_LABELS[compareMetric]}</p>
               <div className="mb-3 flex flex-wrap gap-1.5">
@@ -281,11 +495,13 @@ function ComparePageInner() {
 }
 
 function DuelWl({ won, lost }: { won: number; lost: number }) {
+  const w = Number.isInteger(won) ? String(won) : won.toFixed(1);
+  const l = Number.isInteger(lost) ? String(lost) : lost.toFixed(1);
   return (
     <span className="tabular font-black">
-      <span className="text-emerald-400">W {won}</span>
+      <span className="text-emerald-400">W {w}</span>
       <span className="mx-1 text-[var(--muted-2)]">/</span>
-      <span className="text-[var(--danger)]">L {lost}</span>
+      <span className="text-[var(--danger)]">L {l}</span>
     </span>
   );
 }

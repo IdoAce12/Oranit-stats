@@ -125,10 +125,24 @@ export function groupSlotsOf(slots: FormationSlot[]): Record<PitchZone, number[]
 export function inferSlotGroup(position: string | null | undefined): PitchZone | null {
   if (!position) return null;
   const p = position.toLowerCase();
+  if (/חלוץ|אגף|כנף|\bst\b|lw|rw|cf|ss|wing|forward|striker/.test(p)) return "att";
+  if (/קשר התקפ|\bam\b|\bcam\b/.test(p)) return "att";
   if (/בלם|הגנ|מגן|cb|lb|rb|wb|def|back|stopper/.test(p)) return "def";
-  if (/קשר|אמצע|cm|dm|am|mid/.test(p)) return "mid";
-  if (/חלוץ|התקפ|אגף|כנף|st|lw|rw|att|wing|forward|striker/.test(p)) return "att";
+  if (/קשר|אמצע|cm|dm|mid/.test(p)) return "mid";
+  if (/התקפ|\batt\b/.test(p)) return "att";
   return null;
+}
+
+/** קו התקפה בהרכב: עמדה במשחק / בסגל, או משבצת התקפית ב־4-3-3 (ברירת המחדל). */
+export function isAttackingRole(
+  player: { position?: string | null; lineup_slot?: number | null },
+  squadPosition?: string | null
+): boolean {
+  if (inferSlotGroup(player.position) === "att") return true;
+  if (inferSlotGroup(squadPosition) === "att") return true;
+  const slot = player.lineup_slot;
+  if (typeof slot === "number" && FORMATION_4_3_3[slot]?.zone === "att") return true;
+  return false;
 }
 
 function firstFree(order: number[], taken: Set<number>): number | null {

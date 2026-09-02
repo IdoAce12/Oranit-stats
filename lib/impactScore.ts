@@ -1,6 +1,7 @@
 import { ActionType, Match, MatchEvent, Player, SquadPlayer, Substitution, Zone } from "./types";
 import { roundMetric, xaForEvent, xgForEvent } from "./advancedMetrics";
 import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
+import { playerKeyOf, playerMatchesKey } from "./playerKey";
 
 // =============================================================
 // משקולות ה-Impact Score - כאן מכיילים אחרי כמה משחקים.
@@ -265,35 +266,47 @@ export interface SeasonImpact {
 export function computeSeasonImpact(
   events: MatchEvent[],
   players: Player[],
-  squad: SquadPlayer[]
+  squad: SquadPlayer[],
+  lookupPlayers: Player[] = players
 ): SeasonImpact[] {
   const squadById = new Map(squad.map((s) => [s.id, s]));
 
-  const keyOf = (p: Player) =>
-    p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
+  const keyOf = (p: Player) => playerKeyOf(p, squad);
 
   const labelOf = (p: Player) => {
+    const key = keyOf(p);
+    if (key.startsWith("sq:")) {
+      const s = squadById.get(key.slice(3));
+      if (s) return { label: `#${s.shirt_number} ${s.name}`, num: s.shirt_number, squadId: s.id };
+    }
     if (p.squad_player_id) {
       const s = squadById.get(p.squad_player_id);
-      if (s) return { label: `#${s.shirt_number} ${s.name}`, num: s.shirt_number };
+      if (s) return { label: `#${s.shirt_number} ${s.name}`, num: s.shirt_number, squadId: s.id };
     }
-    return { label: `#${p.shirt_number} ${p.name}`, num: p.shirt_number };
+    return { label: `#${p.shirt_number} ${p.name}`, num: p.shirt_number, squadId: p.squad_player_id ?? null };
   };
 
   const playerToKey = new Map<string, string>();
   const acc = new Map<string, SeasonImpact>();
   const matchesByKey = new Map<string, Set<string>>();
 
+  for (const p of lookupPlayers) {
+    const key = keyOf(p);
+    playerToKey.set(p.id, key);
+    const sid = p.squad_player_id?.trim();
+    if (sid) playerToKey.set(sid, key);
+  }
+
   for (const p of players) {
     const key = keyOf(p);
     playerToKey.set(p.id, key);
     if (!acc.has(key)) {
-      const { label, num } = labelOf(p);
+      const { label, num, squadId } = labelOf(p);
       acc.set(key, {
         key,
         label,
         shirtNumber: num,
-        squadPlayerId: p.squad_player_id,
+        squadPlayerId: squadId,
         score: 0,
         matchesPlayed: 0,
         keyPasses: 0,
@@ -321,7 +334,25 @@ export function computeSeasonImpact(
 
   for (const ev of events) {
     if (!ev.player_id) continue;
-    const key = playerToKey.get(ev.player_id);
+    let key = playerToKey.get(ev.player_id);
+    if (!key || !acc.has(key)) {
+      const rosterInMatch = players.filter((p) => p.match_id === ev.match_id);
+      const source =
+        lookupPlayers.find((p) => p.id === ev.player_id) ??
+        players.find((p) => p.id === ev.player_id);
+      const local = source
+        ? rosterInMatch.find(
+            (p) =>
+              playerKeyOf(p, squad) === playerKeyOf(source, squad) ||
+              (p.squad_player_id && p.squad_player_id === source.squad_player_id) ||
+              (p.shirt_number === source.shirt_number && p.name.trim() === source.name.trim())
+          ) ??
+          (rosterInMatch.filter((p) => p.name.trim() === source.name.trim()).length === 1
+            ? rosterInMatch.find((p) => p.name.trim() === source.name.trim())
+            : undefined)
+        : rosterInMatch.find((p) => p.squad_player_id === ev.player_id);
+      if (local) key = keyOf(local);
+    }
     if (!key) continue;
     const entry = acc.get(key);
     if (!entry) continue;
@@ -369,10 +400,10 @@ export function computeSeasonMinutesByKey(
   players: Player[],
   substitutions: Substitution[],
   matches: Match[],
-  events: MatchEvent[]
+  events: MatchEvent[],
+  squad: SquadPlayer[] = []
 ): Map<string, number> {
-  const keyOf = (p: Player) =>
-    p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
+  const keyOf = (p: Player) => playerKeyOf(p, squad);
 
   const matchById = new Map(matches.map((m) => [m.id, m]));
 
@@ -442,18 +473,17 @@ export function computePlayerSeasonMatches(
   playerKey: string,
   events: MatchEvent[],
   players: Player[],
-  matches: { id: string; opponent: string; match_date: string }[]
+  matches: { id: string; opponent: string; match_date: string }[],
+  squad: SquadPlayer[] = []
 ): PlayerMatchLine[] {
   const matchMeta = new Map(matches.map((m) => [m.id, m]));
-  const myPlayers = players.filter((p) => {
-    const key = p.squad_player_id ? `sq:${p.squad_player_id}` : `nm:${p.name}`;
-    return key === playerKey;
-  });
+  const myPlayers = players.filter((p) => playerMatchesKey(p, playerKey, squad));
   const playerIds = new Set(myPlayers.map((p) => p.id));
   const byMatch = new Map<string, PlayerMatchLine>();
 
   for (const p of myPlayers) {
     const m = matchMeta.get(p.match_id);
+    if (!m) continue;
     if (!byMatch.has(p.match_id)) {
       byMatch.set(p.match_id, {
         matchId: p.match_id,
@@ -479,8 +509,31 @@ export function computePlayerSeasonMatches(
 
   for (const ev of events) {
     if (!ev.player_id || !playerIds.has(ev.player_id)) continue;
-    const line = byMatch.get(ev.match_id);
-    if (!line) continue;
+    let line = byMatch.get(ev.match_id);
+    if (!line) {
+      const m = matchMeta.get(ev.match_id);
+      if (!m) continue;
+      line = {
+        matchId: ev.match_id,
+        opponent: m.opponent,
+        matchDate: m.match_date,
+        goals: 0,
+        assists: 0,
+        keyPasses: 0,
+        tackles: 0,
+        losses: 0,
+        defLosses: 0,
+        shotsInBox: 0,
+        aerialWon: 0,
+        aerialLost: 0,
+        groundWon: 0,
+        groundLost: 0,
+        xg: 0,
+        xa: 0,
+        score: 0,
+      };
+      byMatch.set(ev.match_id, line);
+    }
     line.score += scoreForEvent(ev);
     if (ev.action_type === "goal") line.goals += 1;
     if (ev.action_type === "assist") line.assists += 1;

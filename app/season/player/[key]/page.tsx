@@ -8,6 +8,7 @@ import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
 } from "@/lib/impactScore";
+import { findRowByPlayerKey } from "@/lib/playerKey";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../../../components/AppHeader";
@@ -65,13 +66,13 @@ export default function SeasonPlayerPage() {
     [events, players, squad]
   );
   const seasonRow = useMemo(
-    () => allRows.find((r) => r.key === playerKey) ?? null,
-    [allRows, playerKey]
+    () => findRowByPlayerKey(allRows, playerKey, players, squad),
+    [allRows, playerKey, players, squad]
   );
 
   const matchLines = useMemo(
-    () => computePlayerSeasonMatches(playerKey, events, players, matches),
-    [playerKey, events, players, matches]
+    () => computePlayerSeasonMatches(playerKey, events, players, matches, squad),
+    [playerKey, events, players, matches, squad]
   );
 
   const radar = useMemo(

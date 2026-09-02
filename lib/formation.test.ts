@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   autoAssignSlots,
   inferSlotGroup,
+  isAttackingRole,
   FORMATION_5_3_2,
   LINEUP_SIZE,
   resolveOccupants,
@@ -14,8 +15,10 @@ describe("inferSlotGroup", () => {
     expect(inferSlotGroup("בלם")).toBe("def");
     expect(inferSlotGroup("מגן ימני")).toBe("def");
     expect(inferSlotGroup("קשר אחורי")).toBe("mid");
+    expect(inferSlotGroup("קשר התקפי")).toBe("att");
     expect(inferSlotGroup("חלוץ")).toBe("att");
     expect(inferSlotGroup("כנף שמאל")).toBe("att");
+    expect(inferSlotGroup("ימין התקפה")).toBe("att");
   });
 
   it("מזהה גם ראשי תיבות באנגלית", () => {
@@ -28,6 +31,21 @@ describe("inferSlotGroup", () => {
     expect(inferSlotGroup(null)).toBeNull();
     expect(inferSlotGroup("")).toBeNull();
     expect(inferSlotGroup("שוער")).toBeNull();
+  });
+});
+
+describe("isAttackingRole", () => {
+  it("מזהה תוקף לפי עמדת משחק או סגל", () => {
+    expect(isAttackingRole({ position: "חלוץ" })).toBe(true);
+    expect(isAttackingRole({ position: "קשר" }, "חלוץ")).toBe(true);
+    expect(isAttackingRole({ position: "קשר התקפי" })).toBe(true);
+    expect(isAttackingRole({ position: "בלם" })).toBe(false);
+    expect(isAttackingRole({ position: "קשר" })).toBe(false);
+  });
+
+  it("מזהה משבצת התקפית ב־4-3-3 כשאין טקסט עמדה", () => {
+    expect(isAttackingRole({ position: null, lineup_slot: 8 })).toBe(true);
+    expect(isAttackingRole({ position: null, lineup_slot: 1 })).toBe(false);
   });
 });
 

@@ -5,13 +5,15 @@ import { useEffect, useMemo, useState } from "react";
 import { loadSeasonBundle } from "@/lib/db";
 import { downloadCsv, seasonTableCsv } from "@/lib/exportCsv";
 import { downloadTableauSeasonWorkbook } from "@/lib/tableauExport";
-import { computeSeasonImpact, SeasonImpact } from "@/lib/impactScore";
+import { computeSeasonImpact, computeSeasonMinutesByKey, SeasonImpact } from "@/lib/impactScore";
+import { computeAttackingPressByKey } from "@/lib/attackingPress";
 import { computeTeamSeasonTrend, roundMetric } from "@/lib/advancedMetrics";
+import { matchIdsForTypes } from "@/lib/matchFilter";
+import { attributeMatchEvents } from "@/lib/eventAttribution";
+import { formatRate, RateMode, rateOf } from "@/lib/rates";
 import { withTimeout } from "@/lib/withTimeout";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
-  MATCH_TYPE_LABELS,
-  MATCH_TYPE_ORDER,
   Match,
   MatchEvent,
   MatchType,
@@ -22,6 +24,7 @@ import {
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 import { PageSkeleton } from "../components/Skeleton";
+import { MatchTypeChips, RateModeToggle } from "../components/SeasonFilters";
 import { TrendChart, TrendPoint } from "../components/TrendChart";
 import { METRIC_COLORS, METRIC_LABELS } from "@/lib/trendMetrics";
 
@@ -32,12 +35,20 @@ type SortKey =
   | "assists"
   | "keyPasses"
   | "tackles"
+  | "press"
   | "lossesTotal"
   | "aerialWon"
   | "groundWon"
   | "xg"
   | "xa"
+  | "minutes"
   | "matchesPlayed";
+
+type SeasonRow = SeasonImpact & {
+  minutes: number;
+  press: number;
+  attTackles: number;
+};
 
 /** מדד יחיד ששולט גם במיון הרשימה וגם בגרף המגמה. */
 const SORT_META: Record<SortKey, { label: string; color: string; trendKey: keyof TrendPoint }> = {
@@ -47,11 +58,13 @@ const SORT_META: Record<SortKey, { label: string; color: string; trendKey: keyof
   assists: { label: METRIC_LABELS.assists, color: METRIC_COLORS.assists, trendKey: "assists" },
   keyPasses: { label: "מס״מ", color: METRIC_COLORS.keyPasses, trendKey: "keyPasses" },
   tackles: { label: METRIC_LABELS.tackles, color: METRIC_COLORS.tackles, trendKey: "tackles" },
+  press: { label: "לחץ", color: "#fb7185", trendKey: "tackles" },
   lossesTotal: { label: METRIC_LABELS.losses, color: METRIC_COLORS.losses, trendKey: "losses" },
   aerialWon: { label: "אוויר", color: "#38bdf8", trendKey: "score" },
   groundWon: { label: "קרקע", color: "#a3e635", trendKey: "score" },
   xg: { label: METRIC_LABELS.xg, color: METRIC_COLORS.xg, trendKey: "xg" },
   xa: { label: METRIC_LABELS.xa, color: METRIC_COLORS.xa, trendKey: "xa" },
+  minutes: { label: "דק׳", color: "#94a3b8", trendKey: "matchesPlayed" },
   matchesPlayed: { label: METRIC_LABELS.matchesPlayed, color: METRIC_COLORS.matchesPlayed, trendKey: "matchesPlayed" },
 };
 
@@ -62,18 +75,46 @@ const METRIC_ORDER: SortKey[] = [
   "assists",
   "keyPasses",
   "tackles",
+  "press",
   "lossesTotal",
   "aerialWon",
   "groundWon",
   "xg",
   "xa",
+  "minutes",
   "matchesPlayed",
 ];
 
 const LOAD_TIMEOUT_MS = 12000;
 
-function sortValue(r: SeasonImpact, key: SortKey): number {
+const COUNT_KEYS = new Set<SortKey>([
+  "score",
+  "goals",
+  "assists",
+  "keyPasses",
+  "tackles",
+  "press",
+  "lossesTotal",
+  "aerialWon",
+  "groundWon",
+  "xg",
+  "xa",
+]);
+
+function sortValue(r: SeasonRow, key: SortKey, mode: RateMode): number {
+  if (key === "press") return rateOf(r.press, r.minutes, mode);
+  if (key === "minutes") return r.minutes;
+  if (COUNT_KEYS.has(key)) {
+    const raw = r[key as keyof SeasonImpact];
+    return rateOf(typeof raw === "number" ? raw : 0, r.minutes, mode, key === "xg" || key === "xa" ? 2 : 1);
+  }
   return r[key];
+}
+
+function fmt(r: SeasonRow, key: "goals" | "assists" | "keyPasses" | "tackles" | "press" | "lossesTotal" | "xg" | "xa", mode: RateMode): string {
+  const digits = key === "xg" || key === "xa" ? 2 : 1;
+  const raw = key === "press" ? r.press : r[key];
+  return formatRate(raw, r.minutes, mode, digits);
 }
 
 export default function SeasonPage() {
@@ -90,7 +131,8 @@ export default function SeasonPage() {
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [view, setView] = useState<"cards" | "table">("cards");
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState<MatchType | "all">("all");
+  const [selectedTypes, setSelectedTypes] = useState<MatchType[]>([]);
+  const [rateMode, setRateMode] = useState<RateMode>("total");
 
   const load = () => {
     if (!isSupabaseConfigured) {
@@ -114,13 +156,10 @@ export default function SeasonPage() {
 
   useEffect(load, []);
 
-  // סינון לפי סוג משחק — מצמצמים אירועים/שחקנים/משחקים למשחקים מהסוג שנבחר
-  const allowedMatchIds = useMemo(() => {
-    if (typeFilter === "all") return null;
-    return new Set(
-      matches.filter((m) => (m.match_type ?? "league") === typeFilter).map((m) => m.id)
-    );
-  }, [matches, typeFilter]);
+  const allowedMatchIds = useMemo(
+    () => matchIdsForTypes(matches, selectedTypes),
+    [matches, selectedTypes]
+  );
 
   const filteredMatches = useMemo(
     () => (allowedMatchIds ? matches.filter((m) => allowedMatchIds.has(m.id)) : matches),
@@ -140,20 +179,63 @@ export default function SeasonPage() {
     [substitutions, allowedMatchIds]
   );
 
+  const statsEvents = useMemo(
+    () =>
+      attributeMatchEvents(
+        filteredEvents,
+        filteredPlayers,
+        filteredSubs,
+        filteredMatches,
+        squad,
+        players
+      ),
+    [filteredEvents, filteredPlayers, filteredSubs, filteredMatches, squad, players]
+  );
+
   const typeCounts = useMemo(() => {
     const counts: Record<MatchType, number> = { league: 0, cup: 0, friendly: 0 };
     for (const m of matches) counts[m.match_type ?? "league"] += 1;
     return counts;
   }, [matches]);
 
+  const minutesByKey = useMemo(
+    () =>
+      computeSeasonMinutesByKey(
+        filteredPlayers,
+        filteredSubs,
+        filteredMatches,
+        filteredEvents,
+        squad
+      ),
+    [filteredPlayers, filteredSubs, filteredMatches, filteredEvents, squad]
+  );
+  const pressByKey = useMemo(
+    () =>
+      computeAttackingPressByKey(
+        statsEvents,
+        filteredPlayers,
+        filteredSubs,
+        filteredMatches,
+        squad
+      ),
+    [statsEvents, filteredPlayers, filteredSubs, filteredMatches, squad]
+  );
+
   const rows = useMemo(() => {
-    const base = computeSeasonImpact(filteredEvents, filteredPlayers, squad);
-    const withActivity = base.filter(
+    const base = computeSeasonImpact(statsEvents, filteredPlayers, squad, players);
+    const enriched: SeasonRow[] = base.map((r) => ({
+      ...r,
+      minutes: minutesByKey.get(r.key) ?? 0,
+      press: pressByKey.get(r.key)?.press ?? 0,
+      attTackles: pressByKey.get(r.key)?.attTackles ?? 0,
+    }));
+    const withActivity = enriched.filter(
       (r) =>
         r.score !== 0 ||
+        r.press > 0 ||
         r.goals + r.assists + r.keyPasses + r.tackles + r.lossesTotal + r.shotsInBox > 0
     );
-    const list = withActivity.length > 0 ? withActivity : base;
+    const list = withActivity.length > 0 ? withActivity : enriched;
     const q = query.trim().toLowerCase();
     const filtered = q
       ? list.filter(
@@ -162,13 +244,25 @@ export default function SeasonPage() {
         )
       : list;
     return [...filtered].sort((a, b) => {
-      const av = sortValue(a, sortKey);
-      const bv = sortValue(b, sortKey);
+      const av = sortValue(a, sortKey, rateMode);
+      const bv = sortValue(b, sortKey, rateMode);
       if (av === bv) return a.label.localeCompare(b.label, "he");
       const cmp = av - bv;
       return sortDir === "desc" ? -cmp : cmp;
     });
-  }, [filteredEvents, filteredPlayers, squad, sortKey, sortDir, query]);
+  }, [
+    filteredEvents,
+    filteredPlayers,
+    squad,
+    minutesByKey,
+    pressByKey,
+    sortKey,
+    sortDir,
+    query,
+    rateMode,
+    statsEvents,
+    players,
+  ]);
 
   const teamTrend = useMemo<TrendPoint[]>(
     () =>
@@ -201,8 +295,8 @@ export default function SeasonPage() {
   };
 
   const maxAbs = useMemo(
-    () => Math.max(1, ...rows.map((r) => Math.abs(sortValue(r, sortKey)))),
-    [rows, sortKey]
+    () => Math.max(1, ...rows.map((r) => Math.abs(sortValue(r, sortKey, rateMode)))),
+    [rows, sortKey, rateMode]
   );
 
   const exportSeason = () => {
@@ -225,6 +319,21 @@ export default function SeasonPage() {
     }
   };
 
+  const formatCardValue = (row: SeasonRow, value: number) => {
+    if (sortKey === "minutes" || sortKey === "matchesPlayed") return value;
+    if (sortKey === "score" || sortKey === "perMatch" || rateMode === "per90") {
+      const n =
+        sortKey === "perMatch" ? row.perMatch : sortValue(row, sortKey, rateMode);
+      const digits = sortKey === "xg" || sortKey === "xa" ? 2 : 1;
+      const shown = Number(n.toFixed(digits));
+      if (sortKey === "score" || sortKey === "perMatch") {
+        return `${shown > 0 ? "+" : ""}${shown.toFixed(digits)}`;
+      }
+      return shown;
+    }
+    return value;
+  };
+
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
       <AppHeader
@@ -233,8 +342,8 @@ export default function SeasonPage() {
           loading
             ? "טוען..."
             : `${filteredMatches.length}${
-                typeFilter === "all" ? "" : `/${matchesCount}`
-              } משחקים · ${rows.length} שחקנים`
+                selectedTypes.length === 0 ? "" : `/${matchesCount}`
+              } משחקים · ${rows.length} שחקנים${rateMode === "per90" ? " · ל־90׳" : ""}`
         }
         backHref="/"
       />
@@ -283,24 +392,14 @@ export default function SeasonPage() {
         className="field mb-3 w-full"
       />
 
-      <p className="mb-1.5 text-[11px] text-[var(--muted-2)]">סינון לפי סוג משחק</p>
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        <button
-          onClick={() => setTypeFilter("all")}
-          className={`btn h-8 px-3 text-xs ${typeFilter === "all" ? "btn-primary" : "btn-ghost"}`}
-        >
-          הכל ({matchesCount})
-        </button>
-        {MATCH_TYPE_ORDER.map((t) => (
-          <button
-            key={t}
-            onClick={() => setTypeFilter(t)}
-            className={`btn h-8 px-3 text-xs ${typeFilter === t ? "btn-primary" : "btn-ghost"}`}
-          >
-            {MATCH_TYPE_LABELS[t]} ({typeCounts[t]})
-          </button>
-        ))}
-      </div>
+      <MatchTypeChips
+        selected={selectedTypes}
+        onChange={setSelectedTypes}
+        typeCounts={typeCounts}
+        total={matchesCount}
+      />
+
+      <RateModeToggle mode={rateMode} onChange={setRateMode} />
 
       <p className="mb-1.5 text-[11px] text-[var(--muted-2)]">
         בחר מדד — משפיע גם על המגמה למעלה וגם על מיון השחקנים למטה
@@ -317,6 +416,9 @@ export default function SeasonPage() {
           </button>
         ))}
       </div>
+      <p className="mb-3 text-[11px] text-[var(--muted-2)]">
+        לחץ התקפי: חילוצי הקבוצה בשליש ההתקפי בזמן ששיחק כשחקן התקפה
+      </p>
 
       {loading && <PageSkeleton rows={8} />}
 
@@ -333,8 +435,8 @@ export default function SeasonPage() {
         <div className="card p-6 text-center text-sm text-[var(--muted)]">
           {matchesCount === 0
             ? "עדיין אין משחקים. צור משחק חדש ואסוף אירועים."
-            : typeFilter !== "all" && filteredMatches.length === 0
-              ? `אין עדיין משחקים מסוג ${MATCH_TYPE_LABELS[typeFilter]}.`
+            : selectedTypes.length > 0 && filteredMatches.length === 0
+              ? "אין משחקים בסוגים שנבחרו."
               : filteredEvents.length === 0
                 ? "יש משחקים, אבל עדיין בלי אירועים עם שחקן — רשום פעולות בלייב."
                 : "עדיין אין נתונים עונתיים להצגה."}
@@ -351,7 +453,7 @@ export default function SeasonPage() {
       {!loading && rows.length > 0 && view === "cards" && (
         <div className="card divide-y divide-[var(--border)] overflow-hidden">
           {rows.map((row, i) => {
-            const value = sortValue(row, sortKey);
+            const value = sortValue(row, sortKey, rateMode);
             return (
               <Link
                 key={row.key}
@@ -380,13 +482,26 @@ export default function SeasonPage() {
                     />
                   </div>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
-                    {row.matchesPlayed} מש׳ · {row.goals} שער · {row.assists} ביש · {row.keyPasses}{" "}
-                    מס״מ · {row.tackles} חילוץ · {row.lossesTotal} איבודים · אוויר{" "}
-                    <span className="text-emerald-400">{row.aerialWon}</span>/
-                    <span className="text-[var(--danger)]">{row.aerialLost}</span> · קרקע{" "}
-                    <span className="text-emerald-400">{row.groundWon}</span>/
-                    <span className="text-[var(--danger)]">{row.groundLost}</span> · xG{" "}
-                    {roundMetric(row.xg)}
+                    {row.matchesPlayed} מש׳ · {row.minutes}׳ · {fmt(row, "goals", rateMode)} שער ·{" "}
+                    {fmt(row, "assists", rateMode)} ביש · {fmt(row, "keyPasses", rateMode)} מס״מ ·{" "}
+                    {fmt(row, "tackles", rateMode)} חילוץ · לחץ {fmt(row, "press", rateMode)} ·{" "}
+                    {fmt(row, "lossesTotal", rateMode)} איבודים · אוויר{" "}
+                    <span className="text-emerald-400">
+                      {formatRate(row.aerialWon, row.minutes, rateMode)}
+                    </span>
+                    /
+                    <span className="text-[var(--danger)]">
+                      {formatRate(row.aerialLost, row.minutes, rateMode)}
+                    </span>{" "}
+                    · קרקע{" "}
+                    <span className="text-emerald-400">
+                      {formatRate(row.groundWon, row.minutes, rateMode)}
+                    </span>
+                    /
+                    <span className="text-[var(--danger)]">
+                      {formatRate(row.groundLost, row.minutes, rateMode)}
+                    </span>{" "}
+                    · xG {fmt(row, "xg", rateMode)}
                   </p>
                 </div>
                 <div className="text-left">
@@ -399,9 +514,7 @@ export default function SeasonPage() {
                           : "text-[var(--muted)]"
                     }`}
                   >
-                    {typeof value === "number" && (sortKey === "score" || sortKey === "perMatch")
-                      ? `${value > 0 ? "+" : ""}${value.toFixed(1)}`
-                      : value}
+                    {formatCardValue(row, value)}
                   </div>
                   <div className="text-[10px] text-[var(--muted-2)]">פרופיל ←</div>
                 </div>
@@ -422,10 +535,12 @@ export default function SeasonPage() {
                   {(
                     [
                       ["matchesPlayed", "מש׳"],
+                      ["minutes", "דק׳"],
                       ["goals", "שער"],
                       ["assists", "ביש"],
                       ["keyPasses", "מס״מ"],
                       ["tackles", "חילוץ"],
+                      ["press", "לחץ"],
                       ["lossesTotal", "איבודים"],
                       ["aerialWon", "אוויר W–L"],
                       ["groundWon", "קרקע W–L"],
@@ -459,23 +574,41 @@ export default function SeasonPage() {
                       </Link>
                     </td>
                     <td className="tabular px-1.5 py-2">{row.matchesPlayed}</td>
-                    <td className="tabular px-1.5 py-2 font-bold text-[var(--accent)]">{row.goals}</td>
-                    <td className="tabular px-1.5 py-2 text-[var(--info)]">{row.assists}</td>
-                    <td className="tabular px-1.5 py-2">{row.keyPasses}</td>
-                    <td className="tabular px-1.5 py-2">{row.tackles}</td>
-                    <td className="tabular px-1.5 py-2 text-[var(--danger)]">{row.lossesTotal}</td>
-                    <td className="tabular px-1.5 py-2">
-                      <span className="text-emerald-400">{row.aerialWon}</span>
-                      <span className="text-[var(--muted-2)]">–</span>
-                      <span className="text-[var(--danger)]">{row.aerialLost}</span>
+                    <td className="tabular px-1.5 py-2">{row.minutes}</td>
+                    <td className="tabular px-1.5 py-2 font-bold text-[var(--accent)]">
+                      {fmt(row, "goals", rateMode)}
+                    </td>
+                    <td className="tabular px-1.5 py-2 text-[var(--info)]">
+                      {fmt(row, "assists", rateMode)}
+                    </td>
+                    <td className="tabular px-1.5 py-2">{fmt(row, "keyPasses", rateMode)}</td>
+                    <td className="tabular px-1.5 py-2">{fmt(row, "tackles", rateMode)}</td>
+                    <td className="tabular px-1.5 py-2" title="חילוצי קבוצה בהתקפה בזמן ששיחק כתוקף">
+                      {fmt(row, "press", rateMode)}
+                    </td>
+                    <td className="tabular px-1.5 py-2 text-[var(--danger)]">
+                      {fmt(row, "lossesTotal", rateMode)}
                     </td>
                     <td className="tabular px-1.5 py-2">
-                      <span className="text-emerald-400">{row.groundWon}</span>
+                      <span className="text-emerald-400">
+                        {formatRate(row.aerialWon, row.minutes, rateMode)}
+                      </span>
                       <span className="text-[var(--muted-2)]">–</span>
-                      <span className="text-[var(--danger)]">{row.groundLost}</span>
+                      <span className="text-[var(--danger)]">
+                        {formatRate(row.aerialLost, row.minutes, rateMode)}
+                      </span>
                     </td>
-                    <td className="tabular px-1.5 py-2">{roundMetric(row.xg)}</td>
-                    <td className="tabular px-1.5 py-2">{roundMetric(row.xa)}</td>
+                    <td className="tabular px-1.5 py-2">
+                      <span className="text-emerald-400">
+                        {formatRate(row.groundWon, row.minutes, rateMode)}
+                      </span>
+                      <span className="text-[var(--muted-2)]">–</span>
+                      <span className="text-[var(--danger)]">
+                        {formatRate(row.groundLost, row.minutes, rateMode)}
+                      </span>
+                    </td>
+                    <td className="tabular px-1.5 py-2">{fmt(row, "xg", rateMode)}</td>
+                    <td className="tabular px-1.5 py-2">{fmt(row, "xa", rateMode)}</td>
                     <td
                       className={`tabular px-1.5 py-2 font-black ${
                         row.score > 0
@@ -485,8 +618,8 @@ export default function SeasonPage() {
                             : ""
                       }`}
                     >
-                      {row.score > 0 ? "+" : ""}
-                      {row.score.toFixed(1)}
+                      {rateOf(row.score, row.minutes, rateMode) > 0 ? "+" : ""}
+                      {rateOf(row.score, row.minutes, rateMode).toFixed(1)}
                     </td>
                     <td className="tabular px-1.5 py-2 text-[var(--muted)]">{row.perMatch.toFixed(1)}</td>
                   </tr>
