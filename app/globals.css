@@ -196,6 +196,14 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.compare-tint {
+  color: var(--compare-tint);
+}
+
+.print-only {
+  display: none;
+}
+
 @media print {
   @page {
     size: A4;
@@ -267,6 +275,14 @@ button {
   th,
   td {
     color: #0f172a !important;
+  }
+
+  .compare-tint {
+    color: var(--compare-tint) !important;
+  }
+
+  .print-only {
+    display: block !important;
   }
 
   /* טקסט עמום צריך להישאר קריא בהדפסה */

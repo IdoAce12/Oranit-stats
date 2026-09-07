@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCompareRadar,
   buildRadarData,
   computeTeamSeasonTrend,
   RADAR_AXES,
@@ -72,6 +73,23 @@ describe("buildRadarData", () => {
     const data = buildRadarData(a, [a, b], b);
     const defense = data.find((d) => d.axis === "הגנה")!;
     expect(defense.b).toBe(100);
+  });
+});
+
+describe("buildCompareRadar", () => {
+  it("ממלא עד שלוש סדרות לשלושה שחקנים", () => {
+    const a = source({ goals: 6, score: 18 });
+    const b = source({ tackles: 9, score: 7 });
+    const c = source({ assists: 5, keyPasses: 8, xa: 1, score: 10 });
+    const data = buildCompareRadar([a, b, c], [a, b, c]);
+    const attack = data.find((d) => d.axis === "התקפה")!;
+    const defense = data.find((d) => d.axis === "הגנה")!;
+    const creation = data.find((d) => d.axis === "יצירה")!;
+    expect(attack.a).toBe(100);
+    expect(defense.b).toBe(100);
+    expect(creation.c).toBe(100);
+    expect(attack.c).toBeDefined();
+    expect(defense.d).toBeUndefined();
   });
 });
 

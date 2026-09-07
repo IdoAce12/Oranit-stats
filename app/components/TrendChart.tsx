@@ -21,9 +21,12 @@ export interface TrendPoint {
   tackles?: number;
   losses?: number;
   matchesPlayed?: number;
-  /** ערכים להשוואה בין שני שחקנים */
+  /** ערכים להשוואה בין שחקנים */
   a?: number;
   b?: number;
+  c?: number;
+  d?: number;
+  e?: number;
 }
 
 interface Props {

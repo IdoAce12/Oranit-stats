@@ -38,5 +38,10 @@ export const METRIC_COLORS: Record<MetricKey, string> = {
   matchesPlayed: "#fbbf24",
 };
 
-/** צבעים קבועים לשני שחקנים בהשוואה (לא תלוי במדד). */
-export const COMPARE_COLORS = { a: "#34d399", b: "#60a5fa" } as const;
+/** צבעים קבועים לשחקנים בהשוואה (לא תלוי במדד). */
+export const COMPARE_PALETTE = ["#34d399", "#60a5fa", "#fbbf24", "#fb7185", "#a78bfa"] as const;
+export const COMPARE_COLORS = { a: COMPARE_PALETTE[0], b: COMPARE_PALETTE[1] } as const;
+export const COMPARE_SLOT_KEYS = ["a", "b", "c", "d", "e"] as const;
+export type CompareSlotKey = (typeof COMPARE_SLOT_KEYS)[number];
+export const COMPARE_SLOT_LABELS = ["שחקן א׳", "שחקן ב׳", "שחקן ג׳", "שחקן ד׳", "שחקן ה׳"] as const;
+export const MAX_COMPARE_PLAYERS = COMPARE_SLOT_KEYS.length;

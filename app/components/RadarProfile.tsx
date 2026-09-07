@@ -1,15 +1,32 @@
 "use client";
 
 import { PolarAngleAxis, PolarGrid, PolarRadiusAxis, Radar, RadarChart, ResponsiveContainer } from "recharts";
-import type { RadarDatum } from "@/lib/advancedMetrics";
+import type { RadarDatum, RadarSeriesKey } from "@/lib/advancedMetrics";
+import { COMPARE_PALETTE } from "@/lib/trendMetrics";
+
+export interface RadarSeries {
+  key: RadarSeriesKey;
+  label: string;
+  color: string;
+}
 
 interface Props {
   data: RadarDatum[];
-  aLabel: string;
+  aLabel?: string;
   bLabel?: string;
+  series?: RadarSeries[];
 }
 
-export function RadarProfile({ data, aLabel, bLabel }: Props) {
+export function RadarProfile({ data, aLabel, bLabel, series }: Props) {
+  const resolved: RadarSeries[] =
+    series && series.length > 0
+      ? series
+      : [
+          { key: "a", label: aLabel ?? "שחקן", color: COMPARE_PALETTE[0] },
+          ...(bLabel ? [{ key: "b" as const, label: bLabel, color: COMPARE_PALETTE[1] }] : []),
+        ];
+  const fillOpacity = resolved.length > 2 ? 0.12 : 0.28;
+
   return (
     <div>
       <div className="relative h-72 w-full">
@@ -24,24 +41,17 @@ export function RadarProfile({ data, aLabel, bLabel }: Props) {
                 tick={{ fill: "var(--muted-2)", fontSize: 10 }}
                 axisLine={false}
               />
-              <Radar
-                name={aLabel}
-                dataKey="a"
-                stroke="#34d399"
-                fill="#34d399"
-                fillOpacity={0.28}
-                strokeWidth={2}
-              />
-              {bLabel && (
+              {resolved.map((s) => (
                 <Radar
-                  name={bLabel}
-                  dataKey="b"
-                  stroke="#60a5fa"
-                  fill="#60a5fa"
-                  fillOpacity={0.2}
+                  key={s.key}
+                  name={s.label}
+                  dataKey={s.key}
+                  stroke={s.color}
+                  fill={s.color}
+                  fillOpacity={fillOpacity}
                   strokeWidth={2}
                 />
-              )}
+              ))}
             </RadarChart>
           </ResponsiveContainer>
         </div>
@@ -63,16 +73,12 @@ export function RadarProfile({ data, aLabel, bLabel }: Props) {
         })}
       </div>
       <div className="mt-1 flex flex-wrap items-center justify-center gap-4 text-xs text-[var(--muted)]">
-        <span className="flex items-center gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-[#34d399]" />
-          {aLabel}
-        </span>
-        {bLabel && (
-          <span className="flex items-center gap-1.5">
-            <span className="h-2 w-2 rounded-full bg-[#60a5fa]" />
-            {bLabel}
+        {resolved.map((s) => (
+          <span key={s.key} className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full" style={{ background: s.color }} />
+            {s.label}
           </span>
-        )}
+        ))}
       </div>
     </div>
   );

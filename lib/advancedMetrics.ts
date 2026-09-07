@@ -72,22 +72,33 @@ export interface RadarDatum {
   axis: string;
   a: number;
   b?: number;
+  c?: number;
+  d?: number;
+  e?: number;
 }
 
-/** 0–100 מול הקבוצה — פרופיל אחד או השוואה */
-export function buildRadarData(a: RadarSource, pool: RadarSource[], b?: RadarSource | null): RadarDatum[] {
+export const RADAR_SERIES_KEYS = ["a", "b", "c", "d", "e"] as const;
+export type RadarSeriesKey = (typeof RADAR_SERIES_KEYS)[number];
+
+/** 0–100 מול הקבוצה — פרופיל אחד או כמה שחקנים */
+export function buildCompareRadar(sources: RadarSource[], pool: RadarSource[]): RadarDatum[] {
   const rawPool = pool.map(rawRadarFromSeason);
-  const ra = rawRadarFromSeason(a);
-  const rb = b ? rawRadarFromSeason(b) : null;
+  const raws = sources.map(rawRadarFromSeason);
   return RADAR_AXES.map((ax) => {
     const cap = maxAxis(rawPool, ax.key);
-    const point: RadarDatum = {
-      axis: ax.label,
-      a: Math.round((ra[ax.key] / cap) * 100),
-    };
-    if (rb) point.b = Math.round((rb[ax.key] / cap) * 100);
+    const point: RadarDatum = { axis: ax.label, a: 0 };
+    raws.forEach((raw, i) => {
+      const key = RADAR_SERIES_KEYS[i];
+      if (!key) return;
+      point[key] = Math.round((raw[ax.key] / cap) * 100);
+    });
     return point;
   });
+}
+
+/** 0–100 מול הקבוצה — פרופיל אחד או השוואת שני שחקנים */
+export function buildRadarData(a: RadarSource, pool: RadarSource[], b?: RadarSource | null): RadarDatum[] {
+  return buildCompareRadar(b ? [a, b] : [a], pool);
 }
 
 export interface TeamMatchTrend {

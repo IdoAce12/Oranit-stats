@@ -8,13 +8,14 @@ import { AppHeader } from "../../components/AppHeader";
 import { PageSkeleton } from "../../components/Skeleton";
 import { MatchTypeChips, RateModeToggle } from "../../components/SeasonFilters";
 import { loadSeasonBundle } from "@/lib/db";
-import { computeAttackingPressByKey } from "@/lib/attackingPress";
-import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
+import { computeAttackingPressByKey, AttackingPressRow } from "@/lib/attackingPress";
+import { buildCompareRadar, roundMetric } from "@/lib/advancedMetrics";
 import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
   computeSeasonMinutesByKey,
   PlayerMatchLine,
+  SeasonImpact,
 } from "@/lib/impactScore";
 import { formatMatchOption, matchIdsForTypes } from "@/lib/matchFilter";
 import { findRowByPlayerKey } from "@/lib/playerKey";
@@ -22,8 +23,16 @@ import { attributeMatchEvents } from "@/lib/eventAttribution";
 import { formatRate, RateMode, rateOf, scaleSeasonForRadar } from "@/lib/rates";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { withTimeout } from "@/lib/withTimeout";
-import { COMPARE_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
-import { Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "@/lib/types";
+import {
+  COMPARE_PALETTE,
+  COMPARE_SLOT_KEYS,
+  COMPARE_SLOT_LABELS,
+  MAX_COMPARE_PLAYERS,
+  METRIC_LABELS,
+  MetricKey,
+  type CompareSlotKey,
+} from "@/lib/trendMetrics";
+import { MATCH_TYPE_LABELS, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "@/lib/types";
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -37,6 +46,19 @@ const COMPARE_METRICS: MetricKey[] = [
   "xg",
   "xa",
 ];
+
+/** ממלא חורים באמצע הרשימה, ומשאיר משבצות ריקות רק בסוף (אחרי ״הוסף שחקן״). */
+function packKeys(keys: string[]): string[] {
+  const filled = keys.filter((k) => k.length > 0);
+  let trail = 0;
+  for (let i = keys.length - 1; i >= 0 && !keys[i]; i--) trail += 1;
+  if (filled.length === 0) {
+    return Array.from({ length: Math.max(2, keys.length) }, () => "");
+  }
+  const next = [...filled, ...Array<string>(trail).fill("")];
+  while (next.length < 2) next.push("");
+  return next;
+}
 
 function lineMetric(l: PlayerMatchLine, m: MetricKey): number {
   switch (m) {
@@ -59,11 +81,20 @@ function lineMetric(l: PlayerMatchLine, m: MetricKey): number {
   }
 }
 
+interface PresentPlayer {
+  key: string;
+  slot: CompareSlotKey;
+  color: string;
+  row: SeasonImpact;
+  minutes: number;
+  press: AttackingPressRow | undefined;
+}
+
 export default function ComparePage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto w-full max-w-3xl px-4 pt-6">
+        <main className="mx-auto w-full max-w-4xl px-4 pt-6">
           <AppHeader title="השוואת שחקנים" backHref="/" />
           <PageSkeleton />
         </main>
@@ -85,8 +116,7 @@ function ComparePageInner() {
   const [subs, setSubs] = useState<Substitution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [aKey, setAKey] = useState("");
-  const [bKey, setBKey] = useState("");
+  const [selectedKeys, setSelectedKeys] = useState<string[]>(["", ""]);
   const [compareMetric, setCompareMetric] = useState<MetricKey>("score");
   const [selectedTypes, setSelectedTypes] = useState<MatchType[]>([]);
   const [matchId, setMatchId] = useState("all");
@@ -183,9 +213,6 @@ function ComparePageInner() {
     });
   }, [rows]);
 
-  const a = findRowByPlayerKey(rows, aKey, filteredPlayers, squad);
-  const b = findRowByPlayerKey(rows, bKey, filteredPlayers, squad);
-
   const minutesByKey = useMemo(
     () =>
       computeSeasonMinutesByKey(
@@ -209,82 +236,150 @@ function ComparePageInner() {
     [statsEvents, filteredPlayers, filteredSubs, filteredMatches, squad]
   );
 
-  const aMinutes = a ? minutesByKey.get(a.key) ?? minutesByKey.get(aKey) ?? 0 : 0;
-  const bMinutes = b ? minutesByKey.get(b.key) ?? minutesByKey.get(bKey) ?? 0 : 0;
-  const aPress = a ? pressByKey.get(a.key) ?? pressByKey.get(aKey) : undefined;
-  const bPress = b ? pressByKey.get(b.key) ?? pressByKey.get(bKey) : undefined;
-
-  const radar = useMemo(() => {
-    if (!a) return [];
-    const pool = rows.map((r) =>
-      scaleSeasonForRadar(r, minutesByKey.get(r.key) ?? 0, rateMode)
-    );
-    const aScaled = scaleSeasonForRadar(a, aMinutes, rateMode);
-    const bScaled = b ? scaleSeasonForRadar(b, bMinutes, rateMode) : null;
-    return buildRadarData(aScaled, pool, bScaled);
-  }, [a, b, rows, minutesByKey, rateMode, aMinutes, bMinutes]);
-
-  const aLines = useMemo(
-    () =>
-      aKey
-        ? computePlayerSeasonMatches(aKey, statsEvents, players, filteredMatches, squad)
-        : [],
-    [aKey, statsEvents, players, filteredMatches, squad]
-  );
-
-  const bLines = useMemo(
-    () =>
-      bKey
-        ? computePlayerSeasonMatches(bKey, statsEvents, players, filteredMatches, squad)
-        : [],
-    [bKey, statsEvents, players, filteredMatches, squad]
-  );
-
-  const compareTrend = useMemo<TrendPoint[]>(() => {
-    const byMatch = new Map<string, { label: string; date: string; a?: number; b?: number }>();
-    for (const l of aLines) {
-      byMatch.set(l.matchId, {
-        label: l.opponent.slice(0, 10),
-        date: l.matchDate,
-        a: lineMetric(l, compareMetric),
-      });
-    }
-    for (const l of bLines) {
-      const cur = byMatch.get(l.matchId) ?? { label: l.opponent.slice(0, 10), date: l.matchDate };
-      cur.b = lineMetric(l, compareMetric);
-      byMatch.set(l.matchId, cur);
-    }
-    return Array.from(byMatch.values())
-      .sort((x, y) => (x.date || "").localeCompare(y.date || ""))
-      .map((p) => ({ label: p.label, a: p.a, b: p.b }));
-  }, [aLines, bLines, compareMetric]);
-
-  const compareSeries = useMemo(
-    () => [
-      { key: "a" as keyof TrendPoint, label: a?.label ?? "שחקן א׳", color: COMPARE_COLORS.a },
-      ...(b ? [{ key: "b" as keyof TrendPoint, label: b.label, color: COMPARE_COLORS.b }] : []),
-    ],
-    [a, b]
-  );
-
   const allSeasonRows = useMemo(
     () => computeSeasonImpact(events, players, squad),
     [events, players, squad]
   );
 
-  const selectedALabel =
-    a?.label ??
-    playerOptions.find((r) => r.key === aKey)?.label ??
-    findRowByPlayerKey(allSeasonRows, aKey, players, squad)?.label;
-  const selectedBLabel =
-    b?.label ??
-    playerOptions.find((r) => r.key === bKey)?.label ??
-    findRowByPlayerKey(allSeasonRows, bKey, players, squad)?.label;
+  const present = useMemo<PresentPlayer[]>(() => {
+    const out: PresentPlayer[] = [];
+    for (const key of selectedKeys) {
+      if (!key) continue;
+      const row = findRowByPlayerKey(rows, key, filteredPlayers, squad);
+      if (!row) continue;
+      const i = out.length;
+      const slot = COMPARE_SLOT_KEYS[i];
+      if (!slot) break;
+      out.push({
+        key,
+        slot,
+        color: COMPARE_PALETTE[i],
+        row,
+        minutes: minutesByKey.get(row.key) ?? minutesByKey.get(key) ?? 0,
+        press: pressByKey.get(row.key) ?? pressByKey.get(key),
+      });
+    }
+    return out;
+  }, [selectedKeys, rows, filteredPlayers, squad, minutesByKey, pressByKey]);
+
+  const radar = useMemo(() => {
+    if (present.length === 0) return [];
+    const pool = rows.map((r) =>
+      scaleSeasonForRadar(r, minutesByKey.get(r.key) ?? 0, rateMode)
+    );
+    const sources = present.map((p) => scaleSeasonForRadar(p.row, p.minutes, rateMode));
+    return buildCompareRadar(sources, pool);
+  }, [present, rows, minutesByKey, rateMode]);
+
+  const linesByKey = useMemo(() => {
+    const map = new Map<string, PlayerMatchLine[]>();
+    for (const p of present) {
+      if (map.has(p.key)) continue;
+      map.set(p.key, computePlayerSeasonMatches(p.key, statsEvents, players, filteredMatches, squad));
+    }
+    return map;
+  }, [present, statsEvents, players, filteredMatches, squad]);
+
+  const compareTrend = useMemo<TrendPoint[]>(() => {
+    type Acc = { label: string; date: string } & Partial<Record<CompareSlotKey, number>>;
+    const byMatch = new Map<string, Acc>();
+    for (const p of present) {
+      for (const l of linesByKey.get(p.key) ?? []) {
+        const cur = byMatch.get(l.matchId) ?? {
+          label: l.opponent.slice(0, 10),
+          date: l.matchDate,
+        };
+        cur[p.slot] = lineMetric(l, compareMetric);
+        byMatch.set(l.matchId, cur);
+      }
+    }
+    return Array.from(byMatch.values())
+      .sort((x, y) => (x.date || "").localeCompare(y.date || ""))
+      .map(({ date: _date, ...p }) => p);
+  }, [present, linesByKey, compareMetric]);
+
+  const compareSeries = useMemo(
+    () =>
+      present.map((p) => ({
+        key: p.slot as keyof TrendPoint,
+        label: p.row.label,
+        color: p.color,
+      })),
+    [present]
+  );
+
+  const radarSeries = useMemo(
+    () =>
+      present.map((p) => ({
+        key: p.slot,
+        label: p.row.label,
+        color: p.color,
+      })),
+    [present]
+  );
+
   const singleMatch = matchId !== "all";
+  const selectedMatch = typeFilteredMatches.find((m) => m.id === matchId);
+  const hasSelection = selectedKeys.some((k) => k.length > 0);
+
+  const missingSelected = useMemo(() => {
+    return selectedKeys.flatMap((key, i) => {
+      if (!key) return [];
+      if (findRowByPlayerKey(rows, key, filteredPlayers, squad)) return [];
+      const label =
+        playerOptions.find((r) => r.key === key)?.label ??
+        findRowByPlayerKey(allSeasonRows, key, players, squad)?.label ??
+        key;
+      return [{ key, label, slotLabel: COMPARE_SLOT_LABELS[i] ?? "שחקן" }];
+    });
+  }, [selectedKeys, rows, filteredPlayers, squad, playerOptions, allSeasonRows, players]);
+
+  const scopeLabel = useMemo(() => {
+    const typePart =
+      selectedTypes.length === 0
+        ? "כל סוגי המשחק"
+        : selectedTypes.map((t) => MATCH_TYPE_LABELS[t]).join(" · ");
+    const matchPart = selectedMatch ? formatMatchOption(selectedMatch) : `כל המשחקים (${filteredMatches.length})`;
+    const ratePart = rateMode === "per90" ? "ל־90׳" : "סה״כ";
+    return `${typePart} · ${matchPart} · ${ratePart}`;
+  }, [selectedTypes, selectedMatch, filteredMatches.length, rateMode]);
+
+  function labelForKey(key: string) {
+    return (
+      playerOptions.find((r) => r.key === key)?.label ??
+      findRowByPlayerKey(allSeasonRows, key, players, squad)?.label ??
+      key
+    );
+  }
+
+  function updateKey(index: number, value: string) {
+    setSelectedKeys((prev) => packKeys(prev.map((k, i) => (i === index ? value : k))));
+  }
+
+  function addSlot() {
+    setSelectedKeys((prev) => (prev.length >= MAX_COMPARE_PLAYERS ? prev : packKeys([...prev, ""])));
+  }
+
+  function removeSlot(index: number) {
+    setSelectedKeys((prev) => {
+      if (prev.length <= 2) return packKeys(prev.map((k, i) => (i === index ? "" : k)));
+      return packKeys(prev.filter((_, i) => i !== index));
+    });
+  }
+
+  const printCompare = () => {
+    const prev = document.title;
+    const names = present.map((p) => p.row.label).join(" · ");
+    document.title = names ? `השוואת שחקנים — ${names}` : "השוואת שחקנים";
+    window.print();
+    window.setTimeout(() => {
+      document.title = prev;
+    }, 1000);
+  };
 
   if (loading) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-4 pt-6">
+      <main className="mx-auto w-full max-w-4xl px-4 pt-6">
         <AppHeader title="השוואת שחקנים" backHref={backHref} />
         <PageSkeleton />
       </main>
@@ -292,92 +387,126 @@ function ComparePageInner() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 pt-6 pb-10">
       <AppHeader
         title="השוואת שחקנים"
-        subtitle={singleMatch ? "משחק בודד" : "Head to Head"}
+        subtitle={scopeLabel}
         backHref={backHref}
+        right={
+          present.length > 0 ? (
+            <button type="button" onClick={printCompare} className="btn btn-ghost no-print h-9 px-2 text-xs">
+              PDF
+            </button>
+          ) : undefined
+        }
       />
       {error && <p className="mb-3 text-[var(--danger)]">{error}</p>}
 
-      <MatchTypeChips
-        selected={selectedTypes}
-        onChange={setSelectedTypes}
-        typeCounts={typeCounts}
-        total={matches.length}
-      />
+      <p className="print-only mb-3 text-sm font-bold">
+        {present.map((p) => p.row.label).join("  ·  ")}
+      </p>
 
-      <label className="mb-3 flex flex-col gap-1">
-        <span className="label">משחק</span>
-        <select value={matchId} onChange={(e) => setMatchId(e.target.value)} className="field w-full">
-          <option value="all">כל המשחקים במסנן ({typeFilteredMatches.length})</option>
-          {typeFilteredMatches.map((m) => (
-            <option key={m.id} value={m.id}>
-              {formatMatchOption(m)}
-            </option>
+      <div className="no-print">
+        <MatchTypeChips
+          selected={selectedTypes}
+          onChange={setSelectedTypes}
+          typeCounts={typeCounts}
+          total={matches.length}
+        />
+
+        <label className="mb-3 flex flex-col gap-1">
+          <span className="label">משחק</span>
+          <select value={matchId} onChange={(e) => setMatchId(e.target.value)} className="field w-full">
+            <option value="all">כל המשחקים במסנן ({typeFilteredMatches.length})</option>
+            {typeFilteredMatches.map((m) => (
+              <option key={m.id} value={m.id}>
+                {formatMatchOption(m)}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <RateModeToggle mode={rateMode} onChange={setRateMode} />
+
+        <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {selectedKeys.map((key, i) => (
+            <label key={`slot-${i}`} className="flex flex-col gap-1">
+              <span className="label flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: COMPARE_PALETTE[i] ?? COMPARE_PALETTE[0] }}
+                  />
+                  {COMPARE_SLOT_LABELS[i]}
+                </span>
+                {(selectedKeys.length > 2 || key) && (
+                  <button
+                    type="button"
+                    onClick={() => removeSlot(i)}
+                    className="text-[11px] font-semibold text-[var(--muted)]"
+                  >
+                    {selectedKeys.length > 2 ? "הסר" : "נקה"}
+                  </button>
+                )}
+              </span>
+              <select
+                value={key}
+                onChange={(e) => updateKey(i, e.target.value)}
+                className="field w-full"
+              >
+                <option value="">בחר שחקן</option>
+                {key && !playerOptions.some((r) => r.key === key) && (
+                  <option value={key}>{labelForKey(key)}</option>
+                )}
+                {playerOptions.map((r) => (
+                  <option
+                    key={r.key}
+                    value={r.key}
+                    disabled={selectedKeys.some((other, j) => j !== i && other === r.key)}
+                  >
+                    {r.label}
+                    {singleMatch ? ` · ${minutesByKey.get(r.key) ?? 0}׳` : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
           ))}
-        </select>
-      </label>
+        </div>
 
-      <RateModeToggle mode={rateMode} onChange={setRateMode} />
+        {selectedKeys.length < MAX_COMPARE_PLAYERS && (
+          <button type="button" onClick={addSlot} className="btn btn-ghost mb-4 w-full py-2.5 text-sm">
+            הוסף שחקן ({selectedKeys.length}/{MAX_COMPARE_PLAYERS})
+          </button>
+        )}
 
-      <div className="mb-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
-        <label className="flex flex-col gap-1">
-          <span className="label">שחקן א׳</span>
-          <select value={aKey} onChange={(e) => setAKey(e.target.value)} className="field w-full">
-            <option value="">בחר שחקן</option>
-            {aKey && !playerOptions.some((r) => r.key === aKey) && (
-              <option value={aKey}>{selectedALabel ?? aKey}</option>
-            )}
-            {playerOptions.map((r) => (
-              <option key={r.key} value={r.key}>
-                {r.label}
-                {singleMatch ? ` · ${minutesByKey.get(r.key) ?? 0}׳` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="label">שחקן ב׳</span>
-          <select value={bKey} onChange={(e) => setBKey(e.target.value)} className="field w-full">
-            <option value="">בחר שחקן</option>
-            {bKey && !playerOptions.some((r) => r.key === bKey) && (
-              <option value={bKey}>{selectedBLabel ?? bKey}</option>
-            )}
-            {playerOptions.map((r) => (
-              <option key={r.key} value={r.key} disabled={r.key === aKey}>
-                {r.label}
-                {singleMatch ? ` · ${minutesByKey.get(r.key) ?? 0}׳` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
+        {present.length > 0 && (
+          <button type="button" onClick={printCompare} className="btn btn-ghost mb-4 w-full py-3 text-sm">
+            ייצוא PDF — השוואת שחקנים
+          </button>
+        )}
       </div>
 
-      {!aKey && (
+      {!hasSelection && (
         <div className="card p-6 text-center text-sm text-[var(--muted)]">
-          בחר שני שחקנים מהסגל כדי להשוות רדאר, xG ומגמה. אפשר לצמצם לליגה/גביע/אימון או למשחק בודד.
+          בחר שחקנים מהסגל כדי להשוות רדאר, xG ומגמה. אפשר עד חמישה שחקנים, לצמצם לליגה/גביע/אימון
+          או למשחק בודד, ולייצא PDF כמו דוח משחק.
         </div>
       )}
 
-      {aKey && !a && (
-        <div className="card p-6 text-center text-sm text-[var(--muted)]">
-          {selectedALabel ?? "השחקן"} לא שותף במסנן שנבחר.
-        </div>
+      {missingSelected.length > 0 && (
+        <p className="mb-3 text-sm text-[var(--muted)]">
+          {missingSelected.map((m) => m.label).join(" · ")}{" "}
+          {missingSelected.length === 1 ? "לא שותף" : "לא שותפו"} במסנן שנבחר.
+        </p>
       )}
 
-      {a && (
+      {present.length > 0 && (
         <>
-          {bKey && !b && (
-            <p className="mb-3 text-sm text-[var(--muted)]">
-              {selectedBLabel ?? "שחקן ב׳"} לא שותף במסנן שנבחר — מוצג רק שחקן א׳.
-            </p>
-          )}
           <section className="card mb-4 p-3">
             <p className="label mb-1">
               פרופיל רדאר ({rateMode === "per90" ? "אחוזון לפי קצב ל־90׳" : "אחוזון מול הקבוצה"})
             </p>
-            <RadarProfile data={radar} aLabel={a.label} bLabel={b?.label} />
+            <RadarProfile data={radar} series={radarSeries} />
           </section>
 
           <div className="mb-4 overflow-x-auto">
@@ -387,82 +516,68 @@ function ComparePageInner() {
                   <th className="px-2 py-2 text-right">
                     מדד{rateMode === "per90" ? " · ל־90׳" : ""}
                   </th>
-                  <th className="px-2 py-2">{a.label}</th>
-                  <th className="px-2 py-2">{b?.label ?? "—"}</th>
+                  {present.map((p) => (
+                    <th
+                      key={p.slot}
+                      className="compare-tint px-2 py-2"
+                      style={{ ["--compare-tint" as string]: p.color }}
+                    >
+                      {p.row.label}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {(
                   [
-                    ["משחקים", String(a.matchesPlayed), b ? String(b.matchesPlayed) : null],
-                    ["דקות", `${aMinutes}׳`, b ? `${bMinutes}׳` : null],
-                    ["שערים", formatRate(a.goals, aMinutes, rateMode), b ? formatRate(b.goals, bMinutes, rateMode) : null],
-                    ["בישולים", formatRate(a.assists, aMinutes, rateMode), b ? formatRate(b.assists, bMinutes, rateMode) : null],
-                    ["מס״מ", formatRate(a.keyPasses, aMinutes, rateMode), b ? formatRate(b.keyPasses, bMinutes, rateMode) : null],
-                    ["חילוצים", formatRate(a.tackles, aMinutes, rateMode), b ? formatRate(b.tackles, bMinutes, rateMode) : null],
-                    [
-                      "לחץ התקפי",
-                      formatRate(aPress?.press ?? 0, aMinutes, rateMode),
-                      b ? formatRate(bPress?.press ?? 0, bMinutes, rateMode) : null,
-                    ],
-                    [
-                      "חילוץ התק׳",
-                      formatRate(aPress?.attTackles ?? 0, aMinutes, rateMode),
-                      b ? formatRate(bPress?.attTackles ?? 0, bMinutes, rateMode) : null,
-                    ],
-                    ["איבודים", formatRate(a.lossesTotal, aMinutes, rateMode), b ? formatRate(b.lossesTotal, bMinutes, rateMode) : null],
-                    ["xG", formatRate(a.xg, aMinutes, rateMode, 2), b ? formatRate(b.xg, bMinutes, rateMode, 2) : null],
-                    ["xA", formatRate(a.xa, aMinutes, rateMode, 2), b ? formatRate(b.xa, bMinutes, rateMode, 2) : null],
-                    [
-                      "Impact",
-                      rateOf(a.score, aMinutes, rateMode).toFixed(1),
-                      b ? rateOf(b.score, bMinutes, rateMode).toFixed(1) : null,
-                    ],
-                  ] as [string, string, string | null][]
-                ).map(([label, av, bv]) => (
+                    ["משחקים", (p) => String(p.row.matchesPlayed)],
+                    ["דקות", (p) => `${p.minutes}׳`],
+                    ["שערים", (p) => formatRate(p.row.goals, p.minutes, rateMode)],
+                    ["בישולים", (p) => formatRate(p.row.assists, p.minutes, rateMode)],
+                    ["מס״מ", (p) => formatRate(p.row.keyPasses, p.minutes, rateMode)],
+                    ["חילוצים", (p) => formatRate(p.row.tackles, p.minutes, rateMode)],
+                    ["לחץ התקפי", (p) => formatRate(p.press?.press ?? 0, p.minutes, rateMode)],
+                    ["חילוץ התק׳", (p) => formatRate(p.press?.attTackles ?? 0, p.minutes, rateMode)],
+                    ["איבודים", (p) => formatRate(p.row.lossesTotal, p.minutes, rateMode)],
+                    ["xG", (p) => formatRate(p.row.xg, p.minutes, rateMode, 2)],
+                    ["xA", (p) => formatRate(p.row.xa, p.minutes, rateMode, 2)],
+                    ["Impact", (p) => rateOf(p.row.score, p.minutes, rateMode).toFixed(1)],
+                  ] as [string, (p: PresentPlayer) => string][]
+                ).map(([label, val]) => (
                   <tr key={label} className="border-t border-[var(--border)]">
                     <td className="px-2 py-2 text-right font-bold">{label}</td>
-                    <td className="tabular px-2 py-2 text-[var(--accent)]">{av}</td>
-                    <td className="tabular px-2 py-2 text-[var(--info)]">{bv ?? "—"}</td>
+                    {present.map((p) => (
+                      <td
+                        key={p.slot}
+                        className="compare-tint tabular px-2 py-2"
+                        style={{ ["--compare-tint" as string]: p.color }}
+                      >
+                        {val(p)}
+                      </td>
+                    ))}
                   </tr>
                 ))}
                 <tr className="border-t border-[var(--border)]">
                   <td className="px-2 py-2 text-right font-bold">מאבקי אוויר</td>
-                  <td className="px-2 py-2">
-                    <DuelWl
-                      won={rateOf(a.aerialWon, aMinutes, rateMode)}
-                      lost={rateOf(a.aerialLost, aMinutes, rateMode)}
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    {b ? (
+                  {present.map((p) => (
+                    <td key={p.slot} className="px-2 py-2">
                       <DuelWl
-                        won={rateOf(b.aerialWon, bMinutes, rateMode)}
-                        lost={rateOf(b.aerialLost, bMinutes, rateMode)}
+                        won={rateOf(p.row.aerialWon, p.minutes, rateMode)}
+                        lost={rateOf(p.row.aerialLost, p.minutes, rateMode)}
                       />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
+                    </td>
+                  ))}
                 </tr>
                 <tr className="border-t border-[var(--border)]">
                   <td className="px-2 py-2 text-right font-bold">מאבקי קרקע</td>
-                  <td className="px-2 py-2">
-                    <DuelWl
-                      won={rateOf(a.groundWon, aMinutes, rateMode)}
-                      lost={rateOf(a.groundLost, aMinutes, rateMode)}
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    {b ? (
+                  {present.map((p) => (
+                    <td key={p.slot} className="px-2 py-2">
                       <DuelWl
-                        won={rateOf(b.groundWon, bMinutes, rateMode)}
-                        lost={rateOf(b.groundLost, bMinutes, rateMode)}
+                        won={rateOf(p.row.groundWon, p.minutes, rateMode)}
+                        lost={rateOf(p.row.groundLost, p.minutes, rateMode)}
                       />
-                    ) : (
-                      "—"
-                    )}
-                  </td>
+                    </td>
+                  ))}
                 </tr>
               </tbody>
             </table>
@@ -474,7 +589,7 @@ function ComparePageInner() {
           {!singleMatch && compareTrend.length > 0 && (
             <section className="card p-3">
               <p className="label mb-2">מגמת השוואה — {METRIC_LABELS[compareMetric]}</p>
-              <div className="mb-3 flex flex-wrap gap-1.5">
+              <div className="no-print mb-3 flex flex-wrap gap-1.5">
                 {COMPARE_METRICS.map((m) => (
                   <button
                     key={m}
