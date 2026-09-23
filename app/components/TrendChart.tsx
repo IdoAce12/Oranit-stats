@@ -13,8 +13,6 @@ import {
 export interface TrendPoint {
   label: string;
   score?: number;
-  xg?: number;
-  xa?: number;
   goals?: number;
   assists?: number;
   keyPasses?: number;
@@ -36,7 +34,7 @@ interface Props {
 
 const DEFAULT_SERIES = [
   { key: "score" as const, label: "Impact", color: "#34d399" },
-  { key: "xg" as const, label: "xG", color: "#60a5fa" },
+  { key: "goals" as const, label: "שערים", color: "#60a5fa" },
 ];
 
 function RtlTick({

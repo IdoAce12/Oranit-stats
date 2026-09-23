@@ -1,5 +1,4 @@
 import { ActionType, Match, MatchEvent, Player, SquadPlayer, Substitution, Zone } from "./types";
-import { roundMetric, xaForEvent, xgForEvent } from "./advancedMetrics";
 import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
 import { playerKeyOf, playerMatchesKey } from "./playerKey";
 
@@ -8,30 +7,30 @@ import { playerKeyOf, playerMatchesKey } from "./playerKey";
 // שנה מספרים בלבד; שאר הקוד יתעדכן אוטומטית.
 // =============================================================
 export const IMPACT_WEIGHTS = {
-  key_pass: 2, // מסירת מפתח
+  key_pass: 1, // מסירת מפתח
   tackle: {
-    def: 0.5, // חילוץ בשליש הגנתי (הצלה) - תוספת כדי לא להעניש בלמים
-    mid: 1.5, // חילוץ בשליש מרכזי
-    att: 1.5, // חילוץ בשליש התקפי (שווה כמעט כמו בישול)
+    def: 1.5, // חילוץ הגנה
+    mid: 1, // חילוץ אמצע
+    att: 0.5, // חילוץ התקפה
   } as Record<Zone, number>,
   shot: {
     in_box: 1, // איום מתוך הרחבה
-    out_box: 0, // בעיטה מרחוק - ניטרלי
+    out_box: 0.5, // איום מחוץ לרחבה
   },
   ball_loss: {
-    def: -2, // איבוד בשליש הגנתי - קריטי
-    mid: 0,
-    att: 0,
+    def: -1.5, // איבוד הגנה
+    mid: -1, // איבוד אמצע
+    att: -0.5, // איבוד התקפה
   } as Record<Zone, number>,
-  goal: 3, // שער
+  goal: 2, // שער
   assist: 2, // בישול
   // קרנות הן אירוע קבוצתי ללא שחקן - לא משפיעות על ציון שחקן
   corner_for: 0,
   corner_against: 0,
   aerial_won: 1,
-  aerial_lost: -0.5,
+  aerial_lost: -1,
   ground_won: 1,
-  ground_lost: -0.5,
+  ground_lost: -1,
 };
 
 export function scoreForEvent(event: MatchEvent): number {
@@ -258,8 +257,6 @@ export interface SeasonImpact {
   aerialLost: number;
   groundWon: number;
   groundLost: number;
-  xg: number;
-  xa: number;
   perMatch: number;
 }
 
@@ -323,8 +320,6 @@ export function computeSeasonImpact(
         aerialLost: 0,
         groundWon: 0,
         groundLost: 0,
-        xg: 0,
-        xa: 0,
         perMatch: 0,
       });
     }
@@ -375,8 +370,6 @@ export function computeSeasonImpact(
     if (ev.action_type === "aerial_lost") entry.aerialLost += 1;
     if (ev.action_type === "ground_won") entry.groundWon += 1;
     if (ev.action_type === "ground_lost") entry.groundLost += 1;
-    entry.xg += xgForEvent(ev);
-    entry.xa += xaForEvent(ev);
   }
 
   for (const [key, matches] of matchesByKey) {
@@ -384,8 +377,6 @@ export function computeSeasonImpact(
     if (entry) {
       entry.matchesPlayed = matches.size;
       entry.perMatch = matches.size > 0 ? entry.score / matches.size : 0;
-      entry.xg = roundMetric(entry.xg);
-      entry.xa = roundMetric(entry.xa);
     }
   }
 
@@ -463,8 +454,6 @@ export interface PlayerMatchLine {
   aerialLost: number;
   groundWon: number;
   groundLost: number;
-  xg: number;
-  xa: number;
   score: number;
 }
 
@@ -500,8 +489,6 @@ export function computePlayerSeasonMatches(
         aerialLost: 0,
         groundWon: 0,
         groundLost: 0,
-        xg: 0,
-        xa: 0,
         score: 0,
       });
     }
@@ -528,8 +515,6 @@ export function computePlayerSeasonMatches(
         aerialLost: 0,
         groundWon: 0,
         groundLost: 0,
-        xg: 0,
-        xa: 0,
         score: 0,
       };
       byMatch.set(ev.match_id, line);
@@ -548,11 +533,9 @@ export function computePlayerSeasonMatches(
     if (ev.action_type === "aerial_lost") line.aerialLost += 1;
     if (ev.action_type === "ground_won") line.groundWon += 1;
     if (ev.action_type === "ground_lost") line.groundLost += 1;
-    line.xg += xgForEvent(ev);
-    line.xa += xaForEvent(ev);
   }
 
-  return Array.from(byMatch.values())
-    .map((l) => ({ ...l, xg: roundMetric(l.xg), xa: roundMetric(l.xa) }))
-    .sort((a, b) => (b.matchDate || "").localeCompare(a.matchDate || ""));
+  return Array.from(byMatch.values()).sort((a, b) =>
+    (b.matchDate || "").localeCompare(a.matchDate || "")
+  );
 }

@@ -59,7 +59,7 @@ describe("buildTableauSeasonTables", () => {
     expect(m.duel_win_rate).toBe(0.5);
     expect(m.corners_for).toBe(1);
     expect(typeof m.goals_scored).toBe("number");
-    expect(typeof m.xg).toBe("number");
+    expect(m.impact_score).toBe(4);
   });
 
   it("בונה שורת שחקן-משחק וצבירה עונתית עם עמדה וציון", () => {

@@ -8,8 +8,6 @@ export type MetricKey =
   | "keyPasses"
   | "tackles"
   | "losses"
-  | "xg"
-  | "xa"
   | "matchesPlayed";
 
 export const METRIC_LABELS: Record<MetricKey, string> = {
@@ -20,8 +18,6 @@ export const METRIC_LABELS: Record<MetricKey, string> = {
   keyPasses: "מסירות מפתח",
   tackles: "חילוצים",
   losses: "איבודים",
-  xg: "xG",
-  xa: "xA",
   matchesPlayed: "משחקים",
 };
 
@@ -33,8 +29,6 @@ export const METRIC_COLORS: Record<MetricKey, string> = {
   keyPasses: "#818cf8",
   tackles: "#2dd4bf",
   losses: "#f87171",
-  xg: "#38bdf8",
-  xa: "#22d3ee",
   matchesPlayed: "#fbbf24",
 };
 

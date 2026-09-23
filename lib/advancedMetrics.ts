@@ -1,23 +1,4 @@
-import { MatchEvent, ShotLocation } from "./types";
-
-/** מודל xG פשוט לפי מה שנרשם בלייב: ברחבה / מחוץ לרחבה */
-export const XG_BY_LOCATION: Record<ShotLocation, number> = {
-  in_box: 0.25,
-  out_box: 0.07,
-};
-
-/** xA לכל מסירת מפתח — קירוב עד שיהיו נתוני מסירה מדויקים יותר */
-export const XA_PER_KEY_PASS = 0.12;
-
-export function xgForEvent(ev: MatchEvent): number {
-  if (ev.action_type !== "shot") return 0;
-  return ev.shot_location === "in_box" ? XG_BY_LOCATION.in_box : XG_BY_LOCATION.out_box;
-}
-
-export function xaForEvent(ev: MatchEvent): number {
-  if (ev.action_type !== "key_pass") return 0;
-  return XA_PER_KEY_PASS;
-}
+import { MatchEvent } from "./types";
 
 export const RADAR_AXES = [
   { key: "attack", label: "התקפה" },
@@ -46,8 +27,6 @@ export interface RadarSource {
   tackles: number;
   lossesTotal: number;
   shotsInBox: number;
-  xg: number;
-  xa: number;
   score: number;
   matchesPlayed: number;
 }
@@ -56,10 +35,10 @@ export function rawRadarFromSeason(row: RadarSource): RadarScores {
   const matches = Math.max(1, row.matchesPlayed);
   return {
     attack: row.goals * 3 + row.shotsInBox + row.keyPasses,
-    creation: row.assists * 2 + row.keyPasses + row.xa * 2,
+    creation: row.assists * 2 + row.keyPasses,
     defense: row.tackles,
     control: Math.max(0, matches * 3 - row.lossesTotal),
-    finishing: row.xg * 4 + row.goals,
+    finishing: row.goals + row.shotsInBox,
     impact: Math.max(0, row.score),
   };
 }
@@ -111,8 +90,6 @@ export interface TeamMatchTrend {
   keyPasses: number;
   tackles: number;
   losses: number;
-  xg: number;
-  xa: number;
   score: number;
   /** מספר מצטבר של משחקים ששוחקו עד לנקודה זו */
   matchesPlayed: number;
@@ -134,8 +111,6 @@ export function computeTeamSeasonTrend(
       keyPasses: 0,
       tackles: 0,
       losses: 0,
-      xg: 0,
-      xa: 0,
       score: 0,
       matchesPlayed: 0,
     });
@@ -148,17 +123,14 @@ export function computeTeamSeasonTrend(
     if (ev.action_type === "key_pass") row.keyPasses += 1;
     if (ev.action_type === "tackle") row.tackles += 1;
     if (ev.action_type === "ball_loss") row.losses += 1;
-    row.xg += xgForEvent(ev);
-    row.xa += xaForEvent(ev);
-    row.score += ev.action_type === "goal" ? 3 : ev.action_type === "assist" ? 2 : 0;
+    if (ev.action_type === "goal") row.score += 2;
+    if (ev.action_type === "assist") row.score += 2;
   }
   const sorted = Array.from(byMatch.values())
     .filter((r) => r.matchDate)
     .sort((a, b) => a.matchDate.localeCompare(b.matchDate));
   sorted.forEach((r, i) => {
     r.matchesPlayed = i + 1;
-    r.xg = roundMetric(r.xg);
-    r.xa = roundMetric(r.xa);
   });
   return sorted;
 }

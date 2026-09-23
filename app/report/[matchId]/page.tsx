@@ -20,7 +20,6 @@ import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 import { PlayerCardSheet } from "./PlayerCardSheet";
 import { PageSkeleton } from "../../components/Skeleton";
-import { roundMetric } from "@/lib/advancedMetrics";
 
 export default function ReportPage() {
   const params = useParams<{ matchId: string }>();
@@ -259,8 +258,6 @@ export default function ReportPage() {
             <StatCard value={team.assists} label="בישולים" tone="info" />
             <StatCard value={team.keyPasses} label="מסירות מפתח" tone="info" />
             <StatCard value={`${team.shotsInBox}/${team.shotsOutBox}`} label="איומים רחבה/חוץ" />
-            <StatCard value={roundMetric(team.xg)} label="xG" tone="info" />
-            <StatCard value={roundMetric(team.xa)} label="xA" tone="info" />
             <StatCard
               value={`זכה ${team.aerialWon} · הפסיד ${team.aerialLost}`}
               label="מאבקי אוויר"
@@ -468,19 +465,6 @@ export default function ReportPage() {
             boldLast
           />
           <MetricTable
-            title="xG / xA"
-            exportId="shots"
-            onExport={exportOne}
-            headers={["xG", "xA", "שערים", "בישולים"]}
-            rows={playerStats}
-            sortKey={(r) => r.xg}
-            cells={(r) => [roundMetric(r.xg), roundMetric(r.xa), r.goals, r.assists]}
-            onPlayer={setCardPlayerId}
-            accentCol={0}
-            infoCol={1}
-          />
-
-          <MetricTable
             title="מאבקי אוויר"
             exportId="duels"
             onExport={exportOne}
@@ -662,7 +646,7 @@ function MetricTable({
               {sorted.map((row) => {
                 const vals = cellLabels ? cellLabels(row) : cells(row);
                 return (
-                  <tr key={row.playerId!} className="border-b border-[var(--border)]/50 odd:bg-[var(--panel)] even:bg-[var(--panel-strong)]">
+                  <tr key={row.playerId!} className="border-b border-[var(--border)]/50">
                     <td className={`px-3 py-2.5 ${ltrCols ? "text-left" : "text-right"}`}>
                       <button
                         onClick={() => onPlayer(row.playerId)}

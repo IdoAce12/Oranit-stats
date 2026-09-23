@@ -38,8 +38,6 @@ export function scaleSeasonForRadar(row: SeasonImpact, minutes: number, mode: Ra
     tackles: n(row.tackles),
     lossesTotal: n(row.lossesTotal),
     shotsInBox: n(row.shotsInBox),
-    xg: n(row.xg),
-    xa: n(row.xa),
     score: n(row.score),
     matchesPlayed: 1,
   };

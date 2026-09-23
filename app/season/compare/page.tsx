@@ -43,8 +43,6 @@ const COMPARE_METRICS: MetricKey[] = [
   "keyPasses",
   "tackles",
   "losses",
-  "xg",
-  "xa",
 ];
 
 /** ממלא חורים באמצע הרשימה, ומשאיר משבצות ריקות רק בסוף (אחרי ״הוסף שחקן״). */
@@ -72,10 +70,6 @@ function lineMetric(l: PlayerMatchLine, m: MetricKey): number {
       return l.tackles;
     case "losses":
       return l.losses;
-    case "xg":
-      return roundMetric(l.xg);
-    case "xa":
-      return roundMetric(l.xa);
     default:
       return roundMetric(l.score);
   }
@@ -488,7 +482,7 @@ function ComparePageInner() {
 
       {!hasSelection && (
         <div className="card p-6 text-center text-sm text-[var(--muted)]">
-          בחר שחקנים מהסגל כדי להשוות רדאר, xG ומגמה. אפשר עד חמישה שחקנים, לצמצם לליגה/גביע/אימון
+          בחר שחקנים מהסגל כדי להשוות רדאר ומגמה. אפשר עד חמישה שחקנים, לצמצם לליגה/גביע/אימון
           או למשחק בודד, ולייצא PDF כמו דוח משחק.
         </div>
       )}
@@ -539,8 +533,6 @@ function ComparePageInner() {
                     ["לחץ התקפי", (p) => formatRate(p.press?.press ?? 0, p.minutes, rateMode)],
                     ["חילוץ התק׳", (p) => formatRate(p.press?.attTackles ?? 0, p.minutes, rateMode)],
                     ["איבודים", (p) => formatRate(p.row.lossesTotal, p.minutes, rateMode)],
-                    ["xG", (p) => formatRate(p.row.xg, p.minutes, rateMode, 2)],
-                    ["xA", (p) => formatRate(p.row.xa, p.minutes, rateMode, 2)],
                     ["Impact", (p) => rateOf(p.row.score, p.minutes, rateMode).toFixed(1)],
                   ] as [string, (p: PresentPlayer) => string][]
                 ).map(([label, val]) => (

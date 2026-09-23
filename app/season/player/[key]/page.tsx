@@ -26,8 +26,6 @@ const PLAYER_TREND_METRICS: MetricKey[] = [
   "keyPasses",
   "tackles",
   "losses",
-  "xg",
-  "xa",
 ];
 
 const LOAD_TIMEOUT_MS = 12000;
@@ -90,8 +88,6 @@ export default function SeasonPlayerPage() {
         keyPasses: l.keyPasses,
         tackles: l.tackles,
         losses: l.losses,
-        xg: roundMetric(l.xg),
-        xa: roundMetric(l.xa),
       })),
     [matchLines]
   );
@@ -210,8 +206,6 @@ export default function SeasonPlayerPage() {
           lost={seasonRow.groundLost}
           matches={seasonRow.matchesPlayed}
         />
-        <MiniStat label="xG" value={roundMetric(seasonRow.xg)} avg={avg(seasonRow.xg)} tone="info" />
-        <MiniStat label="xA" value={roundMetric(seasonRow.xa)} avg={avg(seasonRow.xa)} tone="info" />
       </section>
 
       <section className="card mb-4 p-3">

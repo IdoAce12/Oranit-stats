@@ -5,24 +5,9 @@ import {
   computeTeamSeasonTrend,
   RADAR_AXES,
   roundMetric,
-  xaForEvent,
-  xgForEvent,
   type RadarSource,
 } from "./advancedMetrics";
 import { action, makeMatch } from "./testHelpers";
-
-describe("xgForEvent / xaForEvent", () => {
-  it("xG לפי מיקום האיום", () => {
-    expect(xgForEvent(action("p", "shot", { shot_location: "in_box" }))).toBeCloseTo(0.25);
-    expect(xgForEvent(action("p", "shot", { shot_location: "out_box" }))).toBeCloseTo(0.07);
-    expect(xgForEvent(action("p", "goal"))).toBe(0);
-  });
-
-  it("xA רק על מסירת מפתח", () => {
-    expect(xaForEvent(action("p", "key_pass", { zone: "att" }))).toBeCloseTo(0.12);
-    expect(xaForEvent(action("p", "assist"))).toBe(0);
-  });
-});
 
 describe("roundMetric", () => {
   it("מעגל לשתי ספרות כברירת מחדל", () => {
@@ -44,8 +29,6 @@ function source(overrides: Partial<RadarSource> = {}): RadarSource {
     tackles: 0,
     lossesTotal: 0,
     shotsInBox: 0,
-    xg: 0,
-    xa: 0,
     score: 0,
     matchesPlayed: 1,
     ...overrides,
@@ -54,7 +37,7 @@ function source(overrides: Partial<RadarSource> = {}): RadarSource {
 
 describe("buildRadarData", () => {
   it("מחזיר ציר לכל מדד עם ערכים 0–100", () => {
-    const striker = source({ goals: 5, shotsInBox: 5, xg: 2, score: 15 });
+    const striker = source({ goals: 5, shotsInBox: 5, score: 15 });
     const defender = source({ tackles: 8, score: 6 });
     const data = buildRadarData(striker, [striker, defender]);
     expect(data).toHaveLength(RADAR_AXES.length);
@@ -80,7 +63,7 @@ describe("buildCompareRadar", () => {
   it("ממלא עד שלוש סדרות לשלושה שחקנים", () => {
     const a = source({ goals: 6, score: 18 });
     const b = source({ tackles: 9, score: 7 });
-    const c = source({ assists: 5, keyPasses: 8, xa: 1, score: 10 });
+    const c = source({ assists: 5, keyPasses: 8, score: 10 });
     const data = buildCompareRadar([a, b, c], [a, b, c]);
     const attack = data.find((d) => d.axis === "התקפה")!;
     const defense = data.find((d) => d.axis === "הגנה")!;
@@ -112,6 +95,7 @@ describe("computeTeamSeasonTrend", () => {
     expect(trend[1].matchesPlayed).toBe(2);
     expect(trend[0].goals).toBe(1);
     expect(trend[0].assists).toBe(1);
+    expect(trend[0].score).toBe(4);
     expect(trend[1].keyPasses).toBe(1);
     expect(trend[1].tackles).toBe(1);
     expect(trend[1].losses).toBe(1);

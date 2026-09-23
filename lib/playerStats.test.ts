@@ -3,7 +3,7 @@ import { computePlayerMatchStats, computeTeamTotals } from "./playerStats";
 import { action, makeMatch, makePlayer, makeSub } from "./testHelpers";
 
 describe("computeTeamTotals", () => {
-  it("מסכם את כלל אירועי הקבוצה כולל קרנות ו-xG", () => {
+  it("מסכם את כלל אירועי הקבוצה כולל קרנות ואיומים", () => {
     const events = [
       action("a", "goal"),
       action("a", "assist"),
@@ -24,7 +24,6 @@ describe("computeTeamTotals", () => {
     expect(t.cornersFor).toBe(1);
     expect(t.cornersAgainst).toBe(1);
     expect(t.eventsTotal).toBe(8);
-    expect(t.xg).toBeCloseTo(0.32); // 0.25 + 0.07
   });
 });
 

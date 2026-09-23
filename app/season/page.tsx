@@ -7,7 +7,7 @@ import { downloadCsv, seasonTableCsv } from "@/lib/exportCsv";
 import { downloadTableauSeasonWorkbook } from "@/lib/tableauExport";
 import { computeSeasonImpact, computeSeasonMinutesByKey, SeasonImpact } from "@/lib/impactScore";
 import { computeAttackingPressByKey } from "@/lib/attackingPress";
-import { computeTeamSeasonTrend, roundMetric } from "@/lib/advancedMetrics";
+import { computeTeamSeasonTrend } from "@/lib/advancedMetrics";
 import { matchIdsForTypes } from "@/lib/matchFilter";
 import { attributeMatchEvents } from "@/lib/eventAttribution";
 import { formatRate, RateMode, rateOf } from "@/lib/rates";
@@ -39,8 +39,6 @@ type SortKey =
   | "lossesTotal"
   | "aerialWon"
   | "groundWon"
-  | "xg"
-  | "xa"
   | "minutes"
   | "matchesPlayed";
 
@@ -62,8 +60,6 @@ const SORT_META: Record<SortKey, { label: string; color: string; trendKey: keyof
   lossesTotal: { label: METRIC_LABELS.losses, color: METRIC_COLORS.losses, trendKey: "losses" },
   aerialWon: { label: "אוויר", color: "#38bdf8", trendKey: "score" },
   groundWon: { label: "קרקע", color: "#a3e635", trendKey: "score" },
-  xg: { label: METRIC_LABELS.xg, color: METRIC_COLORS.xg, trendKey: "xg" },
-  xa: { label: METRIC_LABELS.xa, color: METRIC_COLORS.xa, trendKey: "xa" },
   minutes: { label: "דק׳", color: "#94a3b8", trendKey: "matchesPlayed" },
   matchesPlayed: { label: METRIC_LABELS.matchesPlayed, color: METRIC_COLORS.matchesPlayed, trendKey: "matchesPlayed" },
 };
@@ -79,8 +75,6 @@ const METRIC_ORDER: SortKey[] = [
   "lossesTotal",
   "aerialWon",
   "groundWon",
-  "xg",
-  "xa",
   "minutes",
   "matchesPlayed",
 ];
@@ -97,8 +91,6 @@ const COUNT_KEYS = new Set<SortKey>([
   "lossesTotal",
   "aerialWon",
   "groundWon",
-  "xg",
-  "xa",
 ]);
 
 function sortValue(r: SeasonRow, key: SortKey, mode: RateMode): number {
@@ -106,15 +98,14 @@ function sortValue(r: SeasonRow, key: SortKey, mode: RateMode): number {
   if (key === "minutes") return r.minutes;
   if (COUNT_KEYS.has(key)) {
     const raw = r[key as keyof SeasonImpact];
-    return rateOf(typeof raw === "number" ? raw : 0, r.minutes, mode, key === "xg" || key === "xa" ? 2 : 1);
+    return rateOf(typeof raw === "number" ? raw : 0, r.minutes, mode, 1);
   }
   return r[key];
 }
 
-function fmt(r: SeasonRow, key: "goals" | "assists" | "keyPasses" | "tackles" | "press" | "lossesTotal" | "xg" | "xa", mode: RateMode): string {
-  const digits = key === "xg" || key === "xa" ? 2 : 1;
+function fmt(r: SeasonRow, key: "goals" | "assists" | "keyPasses" | "tackles" | "press" | "lossesTotal", mode: RateMode): string {
   const raw = key === "press" ? r.press : r[key];
-  return formatRate(raw, r.minutes, mode, digits);
+  return formatRate(raw, r.minutes, mode, 1);
 }
 
 export default function SeasonPage() {
@@ -274,8 +265,6 @@ export default function SeasonPage() {
         keyPasses: m.keyPasses,
         tackles: m.tackles,
         losses: m.losses,
-        xg: m.xg,
-        xa: m.xa,
         matchesPlayed: m.matchesPlayed,
       })),
     [filteredEvents, filteredMatches]
@@ -324,10 +313,9 @@ export default function SeasonPage() {
     if (sortKey === "score" || sortKey === "perMatch" || rateMode === "per90") {
       const n =
         sortKey === "perMatch" ? row.perMatch : sortValue(row, sortKey, rateMode);
-      const digits = sortKey === "xg" || sortKey === "xa" ? 2 : 1;
-      const shown = Number(n.toFixed(digits));
+      const shown = Number(n.toFixed(1));
       if (sortKey === "score" || sortKey === "perMatch") {
-        return `${shown > 0 ? "+" : ""}${shown.toFixed(digits)}`;
+        return `${shown > 0 ? "+" : ""}${shown.toFixed(1)}`;
       }
       return shown;
     }
@@ -500,8 +488,7 @@ export default function SeasonPage() {
                     /
                     <span className="text-[var(--danger)]">
                       {formatRate(row.groundLost, row.minutes, rateMode)}
-                    </span>{" "}
-                    · xG {fmt(row, "xg", rateMode)}
+                    </span>
                   </p>
                 </div>
                 <div className="text-left">
@@ -544,8 +531,6 @@ export default function SeasonPage() {
                       ["lossesTotal", "איבודים"],
                       ["aerialWon", "אוויר W–L"],
                       ["groundWon", "קרקע W–L"],
-                      ["xg", "xG"],
-                      ["xa", "xA"],
                       ["score", "ציון"],
                       ["perMatch", "ממ׳"],
                     ] as [SortKey, string][]
@@ -561,11 +546,11 @@ export default function SeasonPage() {
               </thead>
               <tbody>
                 {rows.map((row, i) => (
-                  <tr key={row.key} className="border-b border-[var(--border)]/50 odd:bg-white/[0.02]">
-                    <td className="sticky right-0 bg-[var(--bg)] px-2 py-2 tabular text-[var(--muted)]">
+                  <tr key={row.key} className="border-b border-[var(--border)]/50">
+                    <td className="sticky right-0 px-2 py-2 tabular text-[var(--muted)]">
                       {i + 1}
                     </td>
-                    <td className="sticky right-8 bg-[var(--bg)] px-2 py-2 text-right">
+                    <td className="sticky right-8 px-2 py-2 text-right">
                       <Link
                         href={`/season/player/${encodeURIComponent(row.key)}`}
                         className="font-bold underline decoration-[var(--border-strong)] underline-offset-2"
@@ -607,8 +592,6 @@ export default function SeasonPage() {
                         {formatRate(row.groundLost, row.minutes, rateMode)}
                       </span>
                     </td>
-                    <td className="tabular px-1.5 py-2">{fmt(row, "xg", rateMode)}</td>
-                    <td className="tabular px-1.5 py-2">{fmt(row, "xa", rateMode)}</td>
                     <td
                       className={`tabular px-1.5 py-2 font-black ${
                         row.score > 0

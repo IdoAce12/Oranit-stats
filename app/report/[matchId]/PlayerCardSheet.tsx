@@ -2,7 +2,6 @@
 
 import { MatchEvent } from "@/lib/types";
 import { PlayerMatchStats } from "@/lib/playerStats";
-import { roundMetric } from "@/lib/advancedMetrics";
 import { ACTION_LABELS, ZONE_LABELS, SHOT_LABELS } from "@/lib/types";
 import type { ReactNode } from "react";
 
@@ -99,11 +98,6 @@ export function PlayerCardSheet({ stats, events, opponent, onClose }: Props) {
           <BigStat value={stats.shotsTotal} label="איומים לשער" tone="info" />
           <BigStat value={opponent?.trim() || "—"} label="יריבה" tone="cyan" />
         </div>
-        <div className="mb-3 grid grid-cols-2 gap-2">
-          <BigStat value={roundMetric(stats.xg)} label="xG" tone="info" />
-          <BigStat value={roundMetric(stats.xa)} label="xA" tone="cyan" />
-        </div>
-
         <div className="mb-3 grid grid-cols-2 gap-2">
           <DuelStat won={stats.aerialWon} lost={stats.aerialLost} label="מאבקי אוויר" />
           <DuelStat won={stats.groundWon} lost={stats.groundLost} label="מאבקי קרקע" />

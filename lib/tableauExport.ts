@@ -35,8 +35,6 @@ export interface TableauMatchRow {
   shots_total: number;
   shots_in_box: number;
   shots_out_box: number;
-  xg: number;
-  xa: number;
   aerial_duels_won: number;
   aerial_duels_lost: number;
   ground_duels_won: number;
@@ -71,8 +69,6 @@ export interface TableauPlayerMatchRow {
   aerial_duels_won: number;
   aerial_duels_lost: number;
   match_rating: number;
-  xg: number;
-  xa: number;
 }
 
 export interface TableauPlayerSeasonRow {
@@ -93,8 +89,6 @@ export interface TableauPlayerSeasonRow {
   aerial_duels_lost: number;
   avg_rating: number;
   total_rating: number;
-  xg: number;
-  xa: number;
   ground_duel_win_rate: number | null;
   aerial_duel_win_rate: number | null;
 }
@@ -178,7 +172,7 @@ export function buildTableauSeasonTables(input: TableauSeasonInput): TableauSeas
     const duelsWon = team.aerialWon + team.groundWon;
     const duelsLost = team.aerialLost + team.groundLost;
     const impactScore = matchEvents.reduce((s, e) => {
-      if (e.action_type === "goal") return s + 3;
+      if (e.action_type === "goal") return s + 2;
       if (e.action_type === "assist") return s + 2;
       return s;
     }, 0);
@@ -200,8 +194,6 @@ export function buildTableauSeasonTables(input: TableauSeasonInput): TableauSeas
       shots_total: team.shotsInBox + team.shotsOutBox,
       shots_in_box: team.shotsInBox,
       shots_out_box: team.shotsOutBox,
-      xg: roundMetric(team.xg),
-      xa: roundMetric(team.xa),
       aerial_duels_won: team.aerialWon,
       aerial_duels_lost: team.aerialLost,
       ground_duels_won: team.groundWon,
@@ -247,8 +239,6 @@ export function buildTableauSeasonTables(input: TableauSeasonInput): TableauSeas
         aerial_duels_won: row.aerialWon,
         aerial_duels_lost: row.aerialLost,
         match_rating: roundMetric(row.score, 1),
-        xg: roundMetric(row.xg),
-        xa: roundMetric(row.xa),
       });
     }
   }
@@ -278,8 +268,6 @@ export function buildTableauSeasonTables(input: TableauSeasonInput): TableauSeas
         aerial_duels_lost: 0,
         avg_rating: 0,
         total_rating: 0,
-        xg: 0,
-        xa: 0,
         ground_duel_win_rate: null,
         aerial_duel_win_rate: null,
         ratingSum: 0,
@@ -300,15 +288,11 @@ export function buildTableauSeasonTables(input: TableauSeasonInput): TableauSeas
     entry.aerial_duels_lost += row.aerial_duels_lost;
     entry.total_rating += row.match_rating;
     entry.ratingSum += row.match_rating;
-    entry.xg += row.xg;
-    entry.xa += row.xa;
   }
 
   const playerSeason = Array.from(acc.values())
     .map(({ ratingSum, ...row }) => ({
       ...row,
-      xg: roundMetric(row.xg),
-      xa: roundMetric(row.xa),
       total_rating: roundMetric(row.total_rating, 1),
       avg_rating:
         row.matches_played > 0 ? roundMetric(ratingSum / row.matches_played, 1) : 0,
@@ -355,8 +339,6 @@ const MATCH_HEADERS: (keyof TableauMatchRow)[] = [
   "shots_total",
   "shots_in_box",
   "shots_out_box",
-  "xg",
-  "xa",
   "aerial_duels_won",
   "aerial_duels_lost",
   "ground_duels_won",
@@ -388,8 +370,6 @@ const PLAYER_SEASON_HEADERS: (keyof TableauPlayerSeasonRow)[] = [
   "aerial_duels_lost",
   "avg_rating",
   "total_rating",
-  "xg",
-  "xa",
   "ground_duel_win_rate",
   "aerial_duel_win_rate",
 ];
@@ -415,8 +395,6 @@ const PLAYER_MATCH_HEADERS: (keyof TableauPlayerMatchRow)[] = [
   "aerial_duels_won",
   "aerial_duels_lost",
   "match_rating",
-  "xg",
-  "xa",
 ];
 
 const DICTIONARY_ROWS: XlsxCell[][] = [

@@ -11,26 +11,26 @@ import { action, makeEvent, makeMatch, makePlayer, makeSquadPlayer, makeSub } fr
 
 describe("scoreForEvent", () => {
   it("מנקד פעולות לפי המשקולות", () => {
-    expect(scoreForEvent(action("p", "key_pass", { zone: "mid" }))).toBe(2);
-    expect(scoreForEvent(action("p", "goal"))).toBe(3);
+    expect(scoreForEvent(action("p", "key_pass", { zone: "mid" }))).toBe(1);
+    expect(scoreForEvent(action("p", "goal"))).toBe(2);
     expect(scoreForEvent(action("p", "assist"))).toBe(2);
   });
 
   it("חילוץ תלוי אזור", () => {
-    expect(scoreForEvent(action("p", "tackle", { zone: "def" }))).toBe(0.5);
-    expect(scoreForEvent(action("p", "tackle", { zone: "mid" }))).toBe(1.5);
-    expect(scoreForEvent(action("p", "tackle", { zone: "att" }))).toBe(1.5);
+    expect(scoreForEvent(action("p", "tackle", { zone: "def" }))).toBe(1.5);
+    expect(scoreForEvent(action("p", "tackle", { zone: "mid" }))).toBe(1);
+    expect(scoreForEvent(action("p", "tackle", { zone: "att" }))).toBe(0.5);
   });
 
-  it("איבוד כדור בהגנה מעניש, באמצע/התקפה ניטרלי", () => {
-    expect(scoreForEvent(action("p", "ball_loss", { zone: "def" }))).toBe(-2);
-    expect(scoreForEvent(action("p", "ball_loss", { zone: "mid" }))).toBe(0);
-    expect(scoreForEvent(action("p", "ball_loss", { zone: "att" }))).toBe(0);
+  it("איבוד כדור לפי אזור", () => {
+    expect(scoreForEvent(action("p", "ball_loss", { zone: "def" }))).toBe(-1.5);
+    expect(scoreForEvent(action("p", "ball_loss", { zone: "mid" }))).toBe(-1);
+    expect(scoreForEvent(action("p", "ball_loss", { zone: "att" }))).toBe(-0.5);
   });
 
-  it("איום מתוך הרחבה שווה נקודה, מבחוץ ניטרלי", () => {
+  it("איום מתוך הרחבה שווה נקודה, מבחוץ חצי", () => {
     expect(scoreForEvent(action("p", "shot", { shot_location: "in_box" }))).toBe(1);
-    expect(scoreForEvent(action("p", "shot", { shot_location: "out_box" }))).toBe(0);
+    expect(scoreForEvent(action("p", "shot", { shot_location: "out_box" }))).toBe(0.5);
   });
 
   it("קרנות לא משפיעות על שחקן", () => {
@@ -52,11 +52,11 @@ describe("computeImpact", () => {
     ];
     const res = computeImpact(events, players);
     expect(res[0].playerId).toBe("a");
-    expect(res[0].score).toBe(5);
+    expect(res[0].score).toBe(3);
     expect(res[0].goals).toBe(1);
     expect(res[0].keyPasses).toBe(1);
     const dan = res.find((r) => r.playerId === "b")!;
-    expect(dan.score).toBe(-2);
+    expect(dan.score).toBe(-1.5);
     expect(dan.lossesByZone.def).toBe(1);
   });
 
@@ -86,8 +86,8 @@ describe("computeSeasonImpact", () => {
     expect(row.goals).toBe(2);
     expect(row.assists).toBe(1);
     expect(row.matchesPlayed).toBe(2);
-    expect(row.score).toBe(8);
-    expect(row.perMatch).toBeCloseTo(4);
+    expect(row.score).toBe(6);
+    expect(row.perMatch).toBeCloseTo(3);
   });
 
   it("מאחד מחליף בלי squad_player_id עם שחקן הסגל לפי שם ומספר", () => {
@@ -159,7 +159,7 @@ describe("computeSeasonImpact", () => {
     expect(rows[rows.length - 1].key).toBe("sq:s1");
   });
 
-  it("מעגל xG/xA לשתי ספרות (בלי שאריות נקודה צפה)", () => {
+  it("סופר איומים בלי xG", () => {
     const squad = [makeSquadPlayer({ id: "s1", name: "חלוץ" })];
     const players = [makePlayer({ id: "p1", squad_player_id: "s1", name: "חלוץ" })];
     const events = [
@@ -169,7 +169,9 @@ describe("computeSeasonImpact", () => {
       action("p1", "shot", { shot_location: "out_box" }),
     ];
     const row = computeSeasonImpact(events, players, squad)[0];
-    expect(row.xg).toBe(0.64);
+    expect(row.shotsInBox).toBe(2);
+    expect(row.shotsOutBox).toBe(2);
+    expect(row.score).toBe(3);
   });
 
   it("מפצל איבודים לפי אזור", () => {
@@ -216,9 +218,9 @@ describe("explainImpact", () => {
     const rows = explainImpact(events);
     const goals = rows.find((r) => r.key === "goal")!;
     expect(goals.count).toBe(2);
-    expect(goals.total).toBe(6);
+    expect(goals.total).toBe(4);
     const aerial = rows.find((r) => r.key === "aerial_lost")!;
-    expect(aerial.total).toBe(-0.5);
+    expect(aerial.total).toBe(-1);
   });
 });
 

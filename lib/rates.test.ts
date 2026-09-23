@@ -32,8 +32,6 @@ describe("scaleSeasonForRadar", () => {
       tackles: 6,
       lossesTotal: 3,
       shotsInBox: 2,
-      xg: 1,
-      xa: 0.5,
       score: 9,
       matchesPlayed: 4,
     } as SeasonImpact;

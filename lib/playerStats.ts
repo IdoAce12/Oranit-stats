@@ -1,6 +1,5 @@
 import { Match, MatchEvent, Player, Substitution, Zone } from "./types";
 import { scoreForEvent } from "./impactScore";
-import { xaForEvent, xgForEvent } from "./advancedMetrics";
 import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
 
 function emptyZones(): Record<Zone, number> {
@@ -27,8 +26,6 @@ export interface PlayerMatchStats {
   aerialLost: number;
   groundWon: number;
   groundLost: number;
-  xg: number;
-  xa: number;
   actionsTotal: number;
   score: number;
   minutesPlayed: number;
@@ -59,8 +56,6 @@ function emptyRow(player: Player | null, playerId: string | null): PlayerMatchSt
     aerialLost: 0,
     groundWon: 0,
     groundLost: 0,
-    xg: 0,
-    xa: 0,
     actionsTotal: 0,
     score: 0,
     minutesPlayed: 0,
@@ -124,8 +119,6 @@ export function computePlayerMatchStats(
     } else if (ev.action_type === "ground_lost") {
       row.groundLost += 1;
     }
-    row.xg += xgForEvent(ev);
-    row.xa += xaForEvent(ev);
   }
 
   const subs = options?.substitutions ?? [];
@@ -168,8 +161,6 @@ export interface TeamMatchTotals {
   aerialLost: number;
   groundWon: number;
   groundLost: number;
-  xg: number;
-  xa: number;
   eventsTotal: number;
 }
 
@@ -187,8 +178,6 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
   let aerialLost = 0;
   let groundWon = 0;
   let groundLost = 0;
-  let xg = 0;
-  let xa = 0;
 
   for (const e of events) {
     if (e.action_type === "goal") goals += 1;
@@ -206,8 +195,6 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
     if (e.action_type === "aerial_lost") aerialLost += 1;
     if (e.action_type === "ground_won") groundWon += 1;
     if (e.action_type === "ground_lost") groundLost += 1;
-    xg += xgForEvent(e);
-    xa += xaForEvent(e);
   }
 
   return {
@@ -224,8 +211,6 @@ export function computeTeamTotals(events: MatchEvent[]): TeamMatchTotals {
     aerialLost,
     groundWon,
     groundLost,
-    xg,
-    xa,
     eventsTotal: events.length,
   };
 }
