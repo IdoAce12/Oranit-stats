@@ -43,14 +43,6 @@ export function buildMatchSummary(events: MatchEvent[], _players: Player[]): Mat
     });
   }
 
-  const shotsTotal = team.shotsInBox + team.shotsOutBox;
-  if (shotsTotal > 0) {
-    insights.push({
-      text: `${shotsTotal} איומים לשער (${team.shotsInBox} ברחבה · ${team.shotsOutBox} מחוץ) · xG ${team.xg.toFixed(2)}`,
-      tone: "neutral",
-    });
-  }
-
   if (team.shotsInBox === 0 && team.shotsOutBox >= 3) {
     insights.push({
       text: "הרבה איומים מבחוץ, מעט מתוך הרחבה",
