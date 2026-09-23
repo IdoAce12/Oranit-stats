@@ -5,6 +5,12 @@ export type XlsxCell = string | number | boolean | null | undefined;
 export interface XlsxSheet {
   name: string;
   rows: XlsxCell[][];
+  /** עברית מימין לשמאל */
+  rtl?: boolean;
+  /** שורה לבנה / שורה כחולה לסירוגין — קריא כשיש הרבה שחקנים */
+  zebra?: boolean;
+  /** כמה שורות עליונות הן כותרת (צבע כהה). ברירת מחדל 1 אם zebra דולק */
+  headerRowCount?: number;
 }
 
 function xmlEscape(value: string): string {
@@ -27,31 +33,47 @@ function colLetter(index: number): string {
   return s;
 }
 
-function cellXml(row: number, col: number, value: XlsxCell): string {
-  if (value === null || value === undefined || value === "") return "";
+function cellXml(row: number, col: number, value: XlsxCell, styleId?: number): string {
   const ref = `${colLetter(col)}${row}`;
+  const sAttr = styleId != null ? ` s="${styleId}"` : "";
+  if (value === null || value === undefined || value === "") {
+    return styleId != null ? `<c r="${ref}"${sAttr}/>` : "";
+  }
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) return "";
-    return `<c r="${ref}"><v>${value}</v></c>`;
+    if (!Number.isFinite(value)) return styleId != null ? `<c r="${ref}"${sAttr}/>` : "";
+    return `<c r="${ref}"${sAttr}><v>${value}</v></c>`;
   }
   if (typeof value === "boolean") {
-    return `<c r="${ref}"><v>${value ? 1 : 0}</v></c>`;
+    return `<c r="${ref}"${sAttr} t="b"><v>${value ? 1 : 0}</v></c>`;
   }
-  return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(String(value))}</t></is></c>`;
+  return `<c r="${ref}"${sAttr} t="inlineStr"><is><t>${xmlEscape(String(value))}</t></is></c>`;
 }
 
-function sheetXml(rows: XlsxCell[][]): string {
-  const body = rows
+function rowStyleId(sheet: XlsxSheet, rowIndex: number, row: XlsxCell[]): number | undefined {
+  if (!sheet.zebra) return undefined;
+  const headerRowCount = sheet.headerRowCount ?? 1;
+  if (row[1] === "סה״כ") return 4;
+  if (rowIndex < headerRowCount) return 1;
+  return (rowIndex - headerRowCount) % 2 === 0 ? 2 : 3;
+}
+
+function sheetXml(sheet: XlsxSheet): string {
+  const colCount = Math.max(1, ...sheet.rows.map((r) => r.length));
+  const views = sheet.rtl
+    ? `<sheetViews><sheetView workbookViewId="0" rightToLeft="1"/></sheetViews>`
+    : "";
+  const body = sheet.rows
     .map((row, i) => {
       const r = i + 1;
-      const cells = row.map((value, c) => cellXml(r, c, value)).join("");
+      const styleId = rowStyleId(sheet, i, row);
+      const cells = Array.from({ length: colCount }, (_, c) => cellXml(r, c, row[c], styleId)).join("");
       return `<row r="${r}">${cells}</row>`;
     })
     .join("");
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
-    `<sheetData>${body}</sheetData></worksheet>`
+    `${views}<sheetData>${body}</sheetData></worksheet>`
   );
 }
 
@@ -82,6 +104,9 @@ function workbookRelsXml(sheetCount: number): string {
   return (
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">` +
+    `<Relationship Id="rIdStyles" ` +
+    `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" ` +
+    `Target="styles.xml"/>` +
     `${rels}</Relationships>`
   );
 }
@@ -101,6 +126,8 @@ function contentTypesXml(sheetCount: number): string {
     `<Default Extension="xml" ContentType="application/xml"/>` +
     `<Override PartName="/xl/workbook.xml" ` +
     `ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>` +
+    `<Override PartName="/xl/styles.xml" ` +
+    `ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>` +
     `${overrides}</Types>`
   );
 }
@@ -211,6 +238,40 @@ function zipStore(files: { name: string; data: Uint8Array }[]): Uint8Array {
   return concat([...locals, centralDir, eocd]);
 }
 
+const STYLES_XML =
+  `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+  `<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">` +
+  `<fonts count="2">` +
+  `<font><sz val="11"/><name val="Calibri"/><family val="2"/></font>` +
+  `<font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/><family val="2"/></font>` +
+  `</fonts>` +
+  `<fills count="5">` +
+  `<fill><patternFill patternType="none"/></fill>` +
+  `<fill><patternFill patternType="gray125"/></fill>` +
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFFFFFFF"/></patternFill></fill>` +
+  `<fill><patternFill patternType="solid"><fgColor rgb="FFD6EAF8"/></patternFill></fill>` +
+  `<fill><patternFill patternType="solid"><fgColor rgb="FF1E4D7B"/></patternFill></fill>` +
+  `</fills>` +
+  `<borders count="2">` +
+  `<border><left/><right/><top/><bottom/><diagonal/></border>` +
+  `<border>` +
+  `<left style="thin"><color rgb="FFCBD5E1"/></left>` +
+  `<right style="thin"><color rgb="FFCBD5E1"/></right>` +
+  `<top style="thin"><color rgb="FFCBD5E1"/></top>` +
+  `<bottom style="thin"><color rgb="FFCBD5E1"/></bottom>` +
+  `<diagonal/>` +
+  `</border>` +
+  `</borders>` +
+  `<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>` +
+  `<cellXfs count="5">` +
+  `<xf numFmtId="0" fontId="0" fillId="0" borderId="0"/>` +
+  `<xf numFmtId="0" fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="0" fontId="0" fillId="2" borderId="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="0" fontId="0" fillId="3" borderId="1" applyFill="1" applyBorder="1"/>` +
+  `<xf numFmtId="0" fontId="1" fillId="4" borderId="1" applyFont="1" applyFill="1" applyBorder="1"/>` +
+  `</cellXfs>` +
+  `</styleSheet>`;
+
 export function buildXlsx(sheets: XlsxSheet[]): Uint8Array {
   const encoder = new TextEncoder();
   const files: { name: string; data: Uint8Array }[] = [
@@ -218,11 +279,12 @@ export function buildXlsx(sheets: XlsxSheet[]): Uint8Array {
     { name: "_rels/.rels", data: encoder.encode(ROOT_RELS) },
     { name: "xl/workbook.xml", data: encoder.encode(workbookXml(sheets)) },
     { name: "xl/_rels/workbook.xml.rels", data: encoder.encode(workbookRelsXml(sheets.length)) },
+    { name: "xl/styles.xml", data: encoder.encode(STYLES_XML) },
   ];
   sheets.forEach((sheet, i) => {
     files.push({
       name: `xl/worksheets/sheet${i + 1}.xml`,
-      data: encoder.encode(sheetXml(sheet.rows)),
+      data: encoder.encode(sheetXml(sheet)),
     });
   });
   return zipStore(files);

@@ -272,6 +272,12 @@ button {
     width: 100% !important;
     font-size: 11px !important;
   }
+  tbody tr:nth-child(odd) td {
+    background: #ffffff !important;
+  }
+  tbody tr:nth-child(even) td {
+    background: #d6eaf8 !important;
+  }
   th,
   td {
     color: #0f172a !important;

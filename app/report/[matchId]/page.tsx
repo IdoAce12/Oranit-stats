@@ -10,12 +10,14 @@ import {
   EXPORT_TABLE_LABELS,
   ExportTableId,
   matchReportToCsv,
+  buildCoachSheetXlsx,
 } from "@/lib/exportCsv";
+import { downloadXlsx } from "@/lib/xlsxWorkbook";
 import { computePlayerMatchStats, computeTeamTotals, PlayerMatchStats } from "@/lib/playerStats";
 import { buildMatchSummary, zoneHeatPercent } from "@/lib/matchSummary";
 import { clockDisplay, readClockState } from "@/lib/matchClock";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { MatchEvent, Match, Player, Substitution, ZONE_LABELS } from "@/lib/types";
+import { ACTION_LABELS, MatchEvent, Match, Player, SHOT_LABELS, Substitution, ZONE_LABELS } from "@/lib/types";
 import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 import { PlayerCardSheet } from "./PlayerCardSheet";
@@ -89,6 +91,17 @@ export default function ReportPage() {
   const summary = useMemo(() => buildMatchSummary(events, players), [events, players]);
   const lossHeat = useMemo(() => zoneHeatPercent(team.losses), [team.losses]);
   const tackleHeat = useMemo(() => zoneHeatPercent(team.tackles), [team.tackles]);
+  const shotsTotal = team.shotsInBox + team.shotsOutBox;
+  const tacklesTotal = team.tackles.def + team.tackles.mid + team.tackles.att;
+  const lossesTotal = team.losses.def + team.losses.mid + team.losses.att;
+  const timeline = useMemo(
+    () =>
+      [...events].sort(
+        (a, b) =>
+          a.half - b.half || a.match_minute - b.match_minute || a.created_at.localeCompare(b.created_at)
+      ),
+    [events]
+  );
 
   const selectedStats = useMemo(() => {
     if (cardPlayerId === undefined) return null;
@@ -110,16 +123,18 @@ export default function ReportPage() {
   };
 
   const exportOne = (id: ExportTableId) => {
+    if (id === "coach") {
+      downloadXlsx(
+        `סיכום_משחק_${match?.opponent ?? "match"}.xlsx`,
+        buildCoachSheetXlsx(events, players, meta, statsOpts)
+      );
+      return;
+    }
     const csv =
       id === "full"
         ? matchReportToCsv(events, players, meta, statsOpts)
         : exportTableCsv(id, events, players, meta, statsOpts);
-    const label =
-      id === "full" || id === "coach"
-        ? "סיכום_משחק"
-        : id === "scores"
-          ? "דוח_ציון"
-          : id;
+    const label = id === "full" ? "סיכום_משחק" : id === "scores" ? "דוח_ציון" : id;
     downloadCsv(`${label}_${match?.opponent ?? "match"}.csv`, csv);
   };
 
@@ -258,9 +273,12 @@ export default function ReportPage() {
             <StatCard value={team.goals} label="שערים" tone="accent" />
             <StatCard value={team.assists} label="בישולים" tone="info" />
             <StatCard value={team.keyPasses} label="מסירות מפתח" tone="info" />
-            <StatCard value={`${team.shotsInBox}/${team.shotsOutBox}`} label="איומים רחבה/חוץ" />
+            <StatCard value={shotsTotal} label="איומים לשער" />
+            <StatCard value={`${team.shotsInBox} / ${team.shotsOutBox}`} label="ברחבה / מחוץ" />
             <StatCard value={roundMetric(team.xg)} label="xG" tone="info" />
             <StatCard value={roundMetric(team.xa)} label="xA" tone="info" />
+            <StatCard value={tacklesTotal} label="חילוצים" tone="accent" />
+            <StatCard value={lossesTotal} label="איבודים" />
             <StatCard
               value={`זכה ${team.aerialWon} · הפסיד ${team.aerialLost}`}
               label="מאבקי אוויר"
@@ -278,6 +296,72 @@ export default function ReportPage() {
             <HeatCard title="איבודים לפי אזור" data={team.losses} pct={lossHeat} tone="danger" />
             <HeatCard title="חילוצים לפי אזור" data={team.tackles} pct={tackleHeat} tone="accent" />
           </section>
+
+          <MetricTable
+            title="כל הנתונים לפי שחקן"
+            exportId="coach"
+            onExport={exportOne}
+            compact
+            headers={[
+              "דק׳",
+              "ציון",
+              "שערים",
+              "בישולים",
+              "מס״מ",
+              "חילוצים",
+              "איבודים",
+              "ברחבה",
+              "מחוץ",
+              "איומים",
+              "xG",
+              "xA",
+              "אוויר ז",
+              "אוויר ה",
+              "קרקע ז",
+              "קרקע ה",
+            ]}
+            rows={playerStats}
+            sortKey={(r) => r.score}
+            cells={(r) => [
+              r.minutesPlayed,
+              r.score,
+              r.goals,
+              r.assists,
+              r.keyPassesTotal,
+              r.tacklesTotal,
+              r.lossesTotal,
+              r.shotsInBox,
+              r.shotsOutBox,
+              r.shotsTotal,
+              roundMetric(r.xg),
+              roundMetric(r.xa),
+              r.aerialWon,
+              r.aerialLost,
+              r.groundWon,
+              r.groundLost,
+            ]}
+            cellLabels={(r) => [
+              r.minutesPlayed,
+              `${r.score > 0 ? "+" : ""}${r.score.toFixed(1)}`,
+              r.goals,
+              r.assists,
+              r.keyPassesTotal,
+              r.tacklesTotal,
+              r.lossesTotal,
+              r.shotsInBox,
+              r.shotsOutBox,
+              r.shotsTotal,
+              roundMetric(r.xg),
+              roundMetric(r.xa),
+              r.aerialWon,
+              r.aerialLost,
+              r.groundWon,
+              r.groundLost,
+            ]}
+            onPlayer={setCardPlayerId}
+            accentCol={9}
+            showMinutes={false}
+          />
 
           {/* ייצוא */}
           <section className="card mb-5 p-4 no-print">
@@ -510,6 +594,45 @@ export default function ReportPage() {
           />
 
           <section className="mb-5">
+            <h2 className="label mb-2">לוג אירועים ({timeline.length})</h2>
+            {timeline.length === 0 ? (
+              <div className="card p-4 text-center text-sm text-[var(--muted)]">אין אירועים.</div>
+            ) : (
+              <ul className="flex flex-col gap-1.5">
+                {timeline.map((e) => {
+                  const p = players.find((x) => x.id === e.player_id);
+                  return (
+                    <li
+                      key={e.id}
+                      className="flex items-center justify-between gap-2 rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-2.5 text-sm"
+                    >
+                      <span className="shrink-0 font-bold tabular">
+                        מחצית {e.half} · דקה {e.match_minute}׳
+                      </span>
+                      <span className="min-w-0 flex-1 text-center">
+                        <span className="font-bold">{ACTION_LABELS[e.action_type]}</span>
+                        {e.zone ? (
+                          <span className="text-[var(--muted-2)]"> · {ZONE_LABELS[e.zone]}</span>
+                        ) : null}
+                        {e.shot_location ? (
+                          <span className="text-[var(--muted-2)]"> · {SHOT_LABELS[e.shot_location]}</span>
+                        ) : null}
+                      </span>
+                      {e.player_id ? (
+                        <button onClick={() => setCardPlayerId(e.player_id)} className="shrink-0 font-bold">
+                          {p ? `#${p.shirt_number} ${p.name}` : "—"}
+                        </button>
+                      ) : (
+                        <span className="shrink-0 text-[var(--muted)]">קבוצתי</span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+
+          <section className="mb-5">
             <h2 className="label mb-2">
               נקודות לחיתוך וידאו — איבודים כלליים ({defensiveLosses.length})
             </h2>
@@ -590,6 +713,7 @@ function MetricTable({
   boldLast,
   showMinutes = true,
   ltrCols = false,
+  compact = false,
 }: {
   title: string;
   exportId: ExportTableId;
@@ -607,6 +731,7 @@ function MetricTable({
   showMinutes?: boolean;
   /** עמודות משמאל לימין (למשל זכה/הפסיד) כדי למנוע בלבול ב-RTL */
   ltrCols?: boolean;
+  compact?: boolean;
 }) {
   const [col, setCol] = useState<number | null>(null);
   const [dir, setDir] = useState<"desc" | "asc">("desc");
@@ -626,21 +751,21 @@ function MetricTable({
     <section className="mb-4">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h2 className="label">{title}</h2>
-        <button onClick={() => onExport(exportId)} className="btn btn-ghost h-8 px-3 text-xs">
+        <button onClick={() => onExport(exportId)} className="btn btn-ghost no-print h-8 px-3 text-xs">
           ⬇ ייצוא טבלה
         </button>
       </div>
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table
-            className="w-full border-collapse text-center text-sm"
+            className={`w-full border-collapse text-center ${compact ? "text-xs" : "text-sm"}`}
             dir={ltrCols ? "ltr" : undefined}
           >
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--panel-strong)] text-[11px] text-[var(--muted)]">
-                <th className={`px-3 py-2 font-bold ${ltrCols ? "text-left" : "text-right"}`}>שחקן</th>
+                <th className={`${compact ? "px-1.5 py-2" : "px-3 py-2"} font-bold ${ltrCols ? "text-left" : "text-right"}`}>שחקן</th>
                 {headers.map((h, i) => (
-                  <th key={h} className="px-2 py-2 font-bold">
+                  <th key={h} className={`${compact ? "px-1 py-2" : "px-2 py-2"} font-bold`}>
                     <button
                       type="button"
                       onClick={() => {
@@ -662,8 +787,8 @@ function MetricTable({
               {sorted.map((row) => {
                 const vals = cellLabels ? cellLabels(row) : cells(row);
                 return (
-                  <tr key={row.playerId!} className="border-b border-[var(--border)]/50 odd:bg-white/[0.02]">
-                    <td className={`px-3 py-2.5 ${ltrCols ? "text-left" : "text-right"}`}>
+                  <tr key={row.playerId!} className="border-b border-[var(--border)]/50 odd:bg-[var(--panel)] even:bg-[var(--panel-strong)]">
+                    <td className={`${compact ? "px-1.5 py-2" : "px-3 py-2.5"} ${ltrCols ? "text-left" : "text-right"}`}>
                       <button
                         onClick={() => onPlayer(row.playerId)}
                         className={`font-bold ${ltrCols ? "text-left" : "text-right"}`}
@@ -697,7 +822,7 @@ function MetricTable({
                       return (
                         <td
                           key={i}
-                          className={`tabular px-2 py-2.5 ${isLast ? "font-black" : "font-semibold"} ${color}`}
+                          className={`tabular ${compact ? "px-1 py-2" : "px-2 py-2.5"} ${isLast ? "font-black" : "font-semibold"} ${color}`}
                         >
                           {v}
                           {typeof v === "number" && title === "דקות משחק" && i === 0 ? "׳" : ""}
