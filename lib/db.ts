@@ -106,6 +106,8 @@ export async function createMatch(input: {
   match_date: string;
   our_team_name: string;
   match_type?: MatchType;
+  status?: Match["status"];
+  kickoff_at?: string | null;
 }): Promise<Match> {
   const supabase = requireClient();
   const { data, error } = await supabase
@@ -115,12 +117,25 @@ export async function createMatch(input: {
       match_date: input.match_date,
       our_team_name: input.our_team_name,
       match_type: input.match_type ?? "league",
-      status: "live",
+      status: input.status ?? "live",
+      kickoff_at: input.kickoff_at ?? null,
     })
     .select()
     .single();
   if (error) throw error;
   return data as Match;
+}
+
+export async function startMatch(id: string): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("matches").update({ status: "live" }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteMatch(id: string): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("matches").delete().eq("id", id);
+  if (error) throw error;
 }
 
 export async function finishMatch(

@@ -15,6 +15,7 @@ import { AppHeader } from "../../../components/AppHeader";
 import { PageSkeleton } from "../../../components/Skeleton";
 import { RadarProfile } from "../../../components/RadarProfile";
 import { TrendChart, TrendPoint } from "../../../components/TrendChart";
+import { useAuth } from "../../../components/AuthProvider";
 import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
 import { withTimeout } from "@/lib/withTimeout";
 import { METRIC_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
@@ -33,6 +34,7 @@ const LOAD_TIMEOUT_MS = 12000;
 export default function SeasonPlayerPage() {
   const params = useParams<{ key: string }>();
   const playerKey = decodeURIComponent(params.key ?? "");
+  const { user, isCoach } = useAuth();
 
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -130,10 +132,13 @@ export default function SeasonPlayerPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 pb-10">
+      {!isCoach && (
+        <p className="mb-2 text-center text-4xl font-black leading-tight">שלום, {user?.username}</p>
+      )}
       <AppHeader
         title={seasonRow.label}
-        subtitle="פרופיל עונתי"
-        backHref="/season"
+        subtitle="הנתונים שלי"
+        backHref={isCoach ? "/season" : "/"}
         right={
           <button type="button" onClick={() => window.print()} className="btn btn-ghost no-print h-9 px-2 text-xs">
             PDF

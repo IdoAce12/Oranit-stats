@@ -58,6 +58,7 @@ import {
   ZONE_LABELS,
 } from "@/lib/types";
 import { MatchClock } from "./MatchClock";
+import { useAuth } from "../../components/AuthProvider";
 
 const PRIMARY_ACTIONS: ActionType[] = ["ball_loss", "tackle", "key_pass", "shot"];
 const SCORE_ACTIONS: ActionType[] = ["goal", "assist"];
@@ -87,6 +88,7 @@ export default function LivePage() {
   const params = useParams<{ matchId: string }>();
   const router = useRouter();
   const matchId = params.matchId;
+  const { isCoach, loading: authLoading } = useAuth();
 
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -113,6 +115,10 @@ export default function LivePage() {
   const [formationId, setFormationId] = useState<FormationId>(DEFAULT_FORMATION_ID);
 
   const clockRef = useRef<{ half: Half; minute: number }>({ half: 1, minute: 0 });
+
+  useEffect(() => {
+    if (!authLoading && !isCoach) router.replace("/");
+  }, [authLoading, isCoach, router]);
 
   const [modalPlayerId, setModalPlayerId] = useState<string | null>(null);
   const [modalAction, setModalAction] = useState<ActionType | null>(null);

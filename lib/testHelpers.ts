@@ -64,6 +64,7 @@ export function makeMatch(overrides: Partial<Match> = {}): Match {
     our_team_name: overrides.our_team_name ?? "הפועל אורנית",
     status: overrides.status ?? "finished",
     match_type: overrides.match_type ?? "league",
+    kickoff_at: overrides.kickoff_at ?? null,
     ended_at: overrides.ended_at ?? null,
     created_at: overrides.created_at ?? "2026-01-01T00:00:00.000Z",
     notes: overrides.notes,

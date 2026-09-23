@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { LineupPitch } from "../components/LineupPitch";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
-import { addPlayers, createMatch, listSquad } from "@/lib/db";
+import { PageSkeleton } from "../components/Skeleton";
+import { addPlayers, createMatch, getMatch, listSquad, startMatch } from "@/lib/db";
+import { toKickoffIso } from "@/lib/fixtures";
 import { DEFAULT_FORMATION_ID, FORMATIONS, FormationId, formationById, LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -21,12 +23,30 @@ interface Selection {
 }
 
 export default function SetupPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="mx-auto w-full max-w-md px-4 pt-6">
+          <PageSkeleton rows={5} />
+        </main>
+      }
+    >
+      <SetupInner />
+    </Suspense>
+  );
+}
+
+function SetupInner() {
   const router = useRouter();
+  const search = useSearchParams();
+  const existingMatchId = search.get("matchId");
+  const scheduleMode = search.get("mode") === "schedule";
   const today = new Date().toISOString().slice(0, 10);
 
   const [step, setStep] = useState<Step>(1);
   const [opponent, setOpponent] = useState("");
   const [matchDate, setMatchDate] = useState(today);
+  const [kickoffTime, setKickoffTime] = useState("20:00");
   const [teamName, setTeamName] = useState("");
   const [matchType, setMatchType] = useState<MatchType>("league");
 
@@ -61,6 +81,25 @@ export default function SetupPage() {
       .catch((e) => setError(e.message ?? "שגיאה"))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!existingMatchId || !isSupabaseConfigured) return;
+    getMatch(existingMatchId).then((m) => {
+      if (!m) return;
+      setOpponent(m.opponent);
+      if (m.match_date) setMatchDate(m.match_date.slice(0, 10));
+      if (m.our_team_name) setTeamName(m.our_team_name);
+      if (m.match_type) setMatchType(m.match_type);
+      if (m.kickoff_at) {
+        const d = new Date(m.kickoff_at);
+        if (!Number.isNaN(d.getTime())) {
+          setKickoffTime(
+            `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`
+          );
+        }
+      }
+    });
+  }, [existingMatchId]);
 
   const selectedSquad = useMemo(
     () => squad.filter((p) => sel[p.id]?.selected),
@@ -221,13 +260,19 @@ export default function SetupPage() {
 
     setSaving(true);
     try {
-      const match = await createMatch({
-        opponent: opponent.trim(),
-        match_date: matchDate,
-        our_team_name: teamName.trim(),
-        match_type: matchType,
-      });
+      const kickoff_at = toKickoffIso(matchDate, kickoffTime);
+      const match = existingMatchId
+        ? { id: existingMatchId }
+        : await createMatch({
+            opponent: opponent.trim(),
+            match_date: matchDate,
+            our_team_name: teamName.trim(),
+            match_type: matchType,
+            status: "live",
+            kickoff_at,
+          });
       await addPlayers(match.id, chosen);
+      if (existingMatchId) await startMatch(existingMatchId);
       router.push(`/live/${match.id}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "שגיאה בשמירה";
@@ -235,6 +280,33 @@ export default function SetupPage() {
         setError("חסרה עמודת הרכב ב-Supabase — הרץ את db/migration_v6.sql");
       } else if (/match_type/i.test(msg)) {
         setError("חסרה עמודת סוג משחק ב-Supabase — הרץ את db/migration_v7.sql");
+      } else if (/scheduled|kickoff|status/i.test(msg)) {
+        setError("חסר שדה משחק מתוכנן — הרץ את db/migration_v9.sql");
+      } else {
+        setError(msg);
+      }
+      setSaving(false);
+    }
+  };
+
+  const saveScheduled = async () => {
+    if (!opponent.trim()) return setError("חסר שם יריב");
+    setError(null);
+    setSaving(true);
+    try {
+      await createMatch({
+        opponent: opponent.trim(),
+        match_date: matchDate,
+        our_team_name: teamName.trim(),
+        match_type: matchType,
+        status: "scheduled",
+        kickoff_at: toKickoffIso(matchDate, kickoffTime),
+      });
+      router.push("/");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "שגיאה בשמירה";
+      if (/scheduled|kickoff|status/i.test(msg)) {
+        setError("חסר שדה משחק מתוכנן — הרץ את db/migration_v9.sql ב-Supabase");
       } else {
         setError(msg);
       }
@@ -243,7 +315,12 @@ export default function SetupPage() {
   };
 
   const titles: Record<Step, { title: string; subtitle: string }> = {
-    1: { title: "משחק חדש — סגל", subtitle: "שלב 1 מתוך 3 · בחירת סגל למשחק" },
+    1: {
+      title: existingMatchId ? "התחל משחק מתוכנן" : scheduleMode ? "משחק מתוכנן" : "משחק חדש — סגל",
+      subtitle: scheduleMode
+        ? "יריבה, תאריך ושעה — בלי לייב"
+        : "שלב 1 מתוך 3 · בחירת סגל למשחק",
+    },
     2: {
       title: "משחק חדש — הרכב פותח",
       subtitle: `שלב 2 מתוך 3 · עד ${MAX_STARTERS} שחקני שדה`,
@@ -302,16 +379,25 @@ export default function SetupPage() {
                   className="field w-full"
                 />
               </label>
-              <label className="flex flex-1 flex-col gap-1.5">
-                <span className="label">הקבוצה שלנו</span>
+              <label className="flex w-28 flex-col gap-1.5">
+                <span className="label">שעה</span>
                 <input
-                  value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
-                  placeholder="אופציונלי"
+                  type="time"
+                  value={kickoffTime}
+                  onChange={(e) => setKickoffTime(e.target.value)}
                   className="field w-full"
                 />
               </label>
             </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="label">הקבוצה שלנו</span>
+              <input
+                value={teamName}
+                onChange={(e) => setTeamName(e.target.value)}
+                placeholder="אופציונלי"
+                className="field w-full"
+              />
+            </label>
             <div className="flex flex-col gap-1.5">
               <span className="label">סוג משחק</span>
               <div className="grid grid-cols-3 gap-2">
@@ -329,6 +415,8 @@ export default function SetupPage() {
             </div>
           </div>
 
+          {!scheduleMode && (
+          <>
           <div className="mb-2 flex items-center justify-between">
             <span className="label">
               סגל למשחק <span className="text-[var(--accent)]">({selectedCount})</span>
@@ -345,6 +433,8 @@ export default function SetupPage() {
           <p className="mb-2 text-[11px] text-[var(--muted-2)]">
             בשלב הזה בוחרים מי בסגל המשחק בלבד — ההרכב הפותח בשלב הבא, והעמדות אחריו.
           </p>
+          </>
+          )}
         </>
       )}
 
@@ -447,7 +537,7 @@ export default function SetupPage() {
 
       {loading && <p className="text-[var(--muted)]">טוען סגל...</p>}
 
-      {!loading && squad.length === 0 && (
+      {!loading && squad.length === 0 && !scheduleMode && (
         <div className="card p-6 text-center text-sm text-[var(--muted)]">
           אין עדיין שחקנים בסגל.
           <Link href="/squad" className="mt-3 block font-bold text-[var(--accent)]">
@@ -456,7 +546,7 @@ export default function SetupPage() {
         </div>
       )}
 
-      {step === 1 && (
+      {step === 1 && !scheduleMode && (
         <ul className="flex flex-col gap-2">
           {squad.map((p) => {
             const s = sel[p.id];
@@ -540,13 +630,27 @@ export default function SetupPage() {
 
       <div className="fixed inset-x-0 bottom-0 mx-auto max-w-md p-4">
         {step === 1 && (
-          <button
-            onClick={goStep2}
-            disabled={!isSupabaseConfigured || squad.length === 0}
-            className="btn btn-primary w-full py-4 text-lg shadow-2xl"
-          >
-            המשך להרכב פותח ← ({selectedCount})
-          </button>
+          <div className="flex flex-col gap-2">
+            {!existingMatchId && (
+              <button
+                type="button"
+                onClick={() => void saveScheduled()}
+                disabled={!isSupabaseConfigured || saving || !opponent.trim()}
+                className="btn btn-ghost w-full py-3 text-sm"
+              >
+                {saving && scheduleMode ? "שומר..." : "שמור בלוח השנה"}
+              </button>
+            )}
+            {!scheduleMode && (
+              <button
+                onClick={goStep2}
+                disabled={!isSupabaseConfigured || squad.length === 0}
+                className="btn btn-primary w-full py-4 text-lg shadow-2xl"
+              >
+                המשך להרכב פותח ← ({selectedCount})
+              </button>
+            )}
+          </div>
         )}
         {step === 2 && (
           <button

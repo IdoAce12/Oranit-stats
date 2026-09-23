@@ -20,8 +20,9 @@ create table if not exists public.matches (
   opponent text not null,
   match_date date not null,
   our_team_name text not null default '',
-  status text not null default 'live' check (status in ('live','finished')),
+  status text not null default 'live' check (status in ('scheduled','live','finished')),
   match_type text not null default 'league' check (match_type in ('league','cup','friendly')),
+  kickoff_at timestamptz,
   ended_at timestamptz,
   notes text not null default '',
   final_half int,
@@ -100,3 +101,76 @@ create policy "public all matches" on public.matches for all using (true) with c
 create policy "public all players" on public.players for all using (true) with check (true);
 create policy "public all events" on public.events for all using (true) with check (true);
 create policy "public all substitutions" on public.substitutions for all using (true) with check (true);
+
+-- =============================================================
+-- כניסת מאמן / שחקן — טבלה ידנית, סיסמה מוצפנת ב-trigger
+-- =============================================================
+create extension if not exists pgcrypto;
+
+create table if not exists public.app_users (
+  id uuid primary key default gen_random_uuid(),
+  username text not null,
+  password text,
+  password_hash text,
+  role text not null check (role in ('coach', 'player')),
+  squad_player_id uuid references public.squad_players(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create unique index if not exists app_users_username_lower
+  on public.app_users (lower(username));
+
+create or replace function public.app_users_hash_password()
+returns trigger
+language plpgsql
+as $$
+declare
+  raw text;
+begin
+  raw := coalesce(nullif(trim(new.password), ''), nullif(trim(new.password_hash), ''));
+  if raw is null then
+    raise exception 'חובה למלא סיסמה בשדה password';
+  end if;
+  if raw like '$2%' then
+    new.password_hash := raw;
+  else
+    new.password_hash := crypt(raw, gen_salt('bf'));
+    new.password := raw;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists app_users_hash_password on public.app_users;
+create trigger app_users_hash_password
+  before insert or update of password, password_hash on public.app_users
+  for each row execute function public.app_users_hash_password();
+
+create or replace function public.verify_login(p_username text, p_password text)
+returns table (
+  id uuid,
+  username text,
+  role text,
+  squad_player_id uuid
+)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+  select u.id, u.username, u.role, u.squad_player_id
+  from public.app_users u
+  where lower(u.username) = lower(trim(p_username))
+    and (
+      (u.password is not null and u.password = p_password)
+      or (u.password_hash is not null and u.password_hash = crypt(p_password, u.password_hash))
+    )
+  limit 1;
+end;
+$$;
+
+revoke all on public.app_users from anon, authenticated, public;
+alter table public.app_users enable row level security;
+
+grant execute on function public.verify_login(text, text) to anon, authenticated;

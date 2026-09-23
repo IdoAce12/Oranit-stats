@@ -17,7 +17,7 @@ PWA (Progressive Web App) ב-Next.js לאיסוף אירועים חי בטלפו
 ### 1. פרויקט Supabase
 1. היכנס ל-[supabase.com](https://supabase.com) וצור פרויקט חדש (חינם).
 2. פתח **SQL Editor → New query**, הדבק את התוכן של [`db/schema.sql`](db/schema.sql) והרץ (Run).
-   - אם כבר יש לך DB ישן: הרץ לפי הסדר את `db/migration_v2.sql` … עד `db/migration_v8.sql` (מאבקי אוויר/קרקע).
+   - אם כבר יש לך DB ישן: הרץ לפי הסדר את `db/migration_v2.sql` … עד `db/migration_v10.sql` (שדה סיסמה לכניסה).
 3. פתח **Project Settings → API** והעתק את `Project URL` ואת `anon public key`.
 
 ### 2. משתני סביבה
@@ -41,6 +41,20 @@ npm run dev
 3. תחת **Environment Variables** הוסף את `NEXT_PUBLIC_SUPABASE_URL` ו-`NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 4. **Deploy**.
 5. בטלפון: פתח את הכתובת בדפדפן → תפריט → **הוסף למסך הבית**. עכשיו זו אפליקציה.
+
+## כניסת מאמן / שחקן
+1. הרץ ב-Supabase SQL Editor את [`db/migration_v9.sql`](db/migration_v9.sql) ואז את [`db/migration_v10.sql`](db/migration_v10.sql).
+2. בטבלת `app_users` מלא ידנית: `username`, `password`, `role` (`coach` או `player`). לשחקן מלא גם `squad_player_id`.
+
+```sql
+insert into public.app_users (username, password, role)
+values ('מאמן', 'סיסמה-שלך', 'coach');
+
+insert into public.app_users (username, password, role, squad_player_id)
+values ('גיא חזן', 'סיסמה-לשחקן', 'player', 'uuid-של-השחקן-בסגל');
+```
+
+שחקן רואה ספירה לאחור, לוח שנה, והנתונים שלו בלבד. מאמן רואה הכול, כולל לייב ויצירת משחקים.
 
 > ה-Service Worker (מטמון אופליין) פעיל רק ב-build פרודקשן, לא ב-`npm run dev`.
 

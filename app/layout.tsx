@@ -4,6 +4,7 @@ import Script from "next/script";
 import "./globals.css";
 import { ServiceWorkerRegister } from "./sw-register";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { AuthProvider } from "./components/AuthProvider";
 
 const assistant = Assistant({
   subsets: ["hebrew", "latin"],
@@ -50,9 +51,11 @@ export default function RootLayout({
           }}
         />
         <ThemeProvider>
+          <AuthProvider>
           <ServiceWorkerRegister />
           <div className="app-bg" aria-hidden />
           {children}
+          </AuthProvider>
         </ThemeProvider>
       </body>
     </html>

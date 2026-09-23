@@ -21,7 +21,16 @@ export type DuelResult = "won" | "lost";
 
 export type Half = 1 | 2;
 
-export type MatchStatus = "live" | "finished";
+export type MatchStatus = "scheduled" | "live" | "finished";
+
+export type UserRole = "coach" | "player";
+
+export interface AppSession {
+  id: string;
+  username: string;
+  role: UserRole;
+  squadPlayerId: string | null;
+}
 
 // סוג משחק — לסיווג וסינון בטבלאות
 export type MatchType = "league" | "cup" | "friendly";
@@ -43,6 +52,7 @@ export interface Match {
   our_team_name: string;
   status: MatchStatus;
   match_type: MatchType;
+  kickoff_at?: string | null;
   ended_at: string | null;
   created_at: string;
   notes?: string;
@@ -121,6 +131,12 @@ export const MATCH_TYPE_FULL_LABELS: Record<MatchType, string> = {
 
 // סדר קבוע להצגה
 export const MATCH_TYPE_ORDER: MatchType[] = ["league", "cup", "friendly"];
+
+export const MATCH_STATUS_LABELS: Record<MatchStatus, string> = {
+  scheduled: "מתוכנן",
+  live: "חי",
+  finished: "הושלם",
+};
 
 export const ACTION_LABELS: Record<ActionType, string> = {
   ball_loss: "איבוד כדור",

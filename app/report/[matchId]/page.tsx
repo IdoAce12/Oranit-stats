@@ -20,11 +20,13 @@ import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 import { PlayerCardSheet } from "./PlayerCardSheet";
 import { PageSkeleton } from "../../components/Skeleton";
+import { useAuth } from "../../components/AuthProvider";
 
 export default function ReportPage() {
   const params = useParams<{ matchId: string }>();
   const router = useRouter();
   const matchId = params.matchId;
+  const { isCoach } = useAuth();
 
   const [match, setMatch] = useState<Match | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -185,7 +187,7 @@ export default function ReportPage() {
         backHref="/"
         right={
           <div className="no-print flex items-center gap-1">
-            {isLive ? (
+            {isLive && isCoach ? (
               <Link href={`/live/${matchId}`} className="text-xs font-bold text-[var(--info)]">
                 חזרה ללייב
               </Link>
@@ -204,9 +206,9 @@ export default function ReportPage() {
         </p>
       )}
 
-      {isLive && <LiveClockBadge matchId={matchId} />}
+      {isLive && isCoach && <LiveClockBadge matchId={matchId} />}
 
-      {!isLive && (
+      {!isLive && isCoach && (
         <div className="mb-4 rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-sm text-[var(--muted)]">
           <p className="font-bold text-[var(--text)]">המשחק הושלם — אין יותר לייב או עריכת אירועים.</p>
           <button
@@ -277,6 +279,7 @@ export default function ReportPage() {
           </section>
 
           {/* ייצוא */}
+          {isCoach && (
           <section className="card mb-5 p-4 no-print">
             <p className="label mb-2">ייצוא דוח</p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -297,6 +300,7 @@ export default function ReportPage() {
               ייצוא PDF — סיכום משחק
             </button>
           </section>
+          )}
 
           {/* כרטיסי שחקנים */}
           <section className="mb-5">
@@ -530,11 +534,13 @@ export default function ReportPage() {
             <p className="label mb-2">הערת משחק</p>
             <textarea
               value={notes}
-              onChange={(e) => setNotes(e.target.value)}
+              onChange={(e) => isCoach && setNotes(e.target.value)}
+              readOnly={!isCoach}
               placeholder="מזג אוויר, מגרש, שיפוט, דגשים למאמן..."
               rows={3}
               className="field w-full resize-none"
             />
+            {isCoach && (
             <button
               onClick={saveNotes}
               disabled={notesSaving}
@@ -542,6 +548,7 @@ export default function ReportPage() {
             >
               {notesSaving ? "שומר..." : "שמור הערה"}
             </button>
+            )}
           </section>
         </>
       )}
