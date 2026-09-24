@@ -79,7 +79,7 @@ export default function HomePage() {
 
   if (authLoading || !user) {
     return (
-      <main className="mx-auto w-full max-w-md px-4 pt-6">
+      <main className="mx-auto w-full max-w-md px-4 page-shell">
         <PageSkeleton rows={4} />
       </main>
     );

@@ -9,7 +9,7 @@ export function LeagueTable({ rows }: { rows: IfaStandingRow[] }) {
 
   return (
     <div className="card overflow-hidden">
-      <div className="overflow-x-auto">
+      <div className="min-w-0">
         <table className="league-table">
           <thead>
             <tr>

@@ -323,7 +323,7 @@ export default function SeasonPage() {
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-nav">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 page-shell pb-nav">
       <AppHeader
         title="נתונים"
         subtitle={

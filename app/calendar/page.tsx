@@ -73,7 +73,7 @@ export default function CalendarPage() {
   const us = useMemo(() => standings.find((r) => r.isUs) ?? null, [standings]);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-nav">
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell pb-nav">
       <AppHeader title="לוח משחקים" subtitle="המשחקים הבאים והמשחקים ששוחקו" />
 
       {loading && <PageSkeleton rows={4} />}

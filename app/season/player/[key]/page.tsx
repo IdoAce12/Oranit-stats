@@ -180,7 +180,7 @@ export default function SeasonPlayerPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto w-full max-w-2xl px-4 pt-6 pb-nav">
+      <main className="mx-auto w-full max-w-2xl px-4 page-shell pb-nav">
         <AppHeader title="פרופיל" />
         <PageSkeleton />
       </main>
@@ -189,7 +189,7 @@ export default function SeasonPlayerPage() {
 
   if (error || !seasonRow) {
     return (
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-8">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell">
         <p className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">
           {error ?? "שחקן לא נמצא"}
         </p>
@@ -210,7 +210,7 @@ export default function SeasonPlayerPage() {
       : null;
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 pb-nav">
+    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 page-shell pb-nav">
       {!isCoach && (
         <p className="mb-2 text-center font-[family-name:var(--font-frank)] text-3xl font-bold leading-tight">
           שלום, {displayName}

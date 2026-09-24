@@ -88,7 +88,7 @@ export default function ComparePage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto w-full max-w-4xl px-4 pt-6">
+        <main className="mx-auto w-full max-w-4xl px-4 page-shell">
           <AppHeader title="השוואת שחקנים" backHref="/" />
           <PageSkeleton />
         </main>
@@ -373,7 +373,7 @@ function ComparePageInner() {
 
   if (loading) {
     return (
-      <main className="mx-auto w-full max-w-4xl px-4 pt-6">
+      <main className="mx-auto w-full max-w-4xl px-4 page-shell">
         <AppHeader title="השוואת שחקנים" backHref={backHref} />
         <PageSkeleton />
       </main>
@@ -381,7 +381,7 @@ function ComparePageInner() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-4 page-shell pb-10">
       <AppHeader
         title="השוואת שחקנים"
         subtitle={scopeLabel}

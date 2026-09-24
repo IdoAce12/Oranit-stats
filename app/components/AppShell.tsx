@@ -12,9 +12,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const showNav = Boolean(user && !loading && isTabPath(pathname));
 
   return (
-    <>
-      {children}
+    <div className="app-root">
+      <div className="app-frame">{children}</div>
       {showNav ? <BottomNav /> : null}
-    </>
+    </div>
   );
 }

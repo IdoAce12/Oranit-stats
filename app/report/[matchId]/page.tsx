@@ -158,7 +158,7 @@ export default function ReportPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto w-full max-w-3xl px-4 pt-6">
+      <main className="mx-auto w-full max-w-3xl px-4 page-shell">
         <AppHeader title="דוח משחק" backHref="/" />
         <PageSkeleton rows={7} />
       </main>
@@ -167,7 +167,7 @@ export default function ReportPage() {
 
   if (error && !match) {
     return (
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-8">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell">
         <p className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">{error}</p>
         <Link href="/" className="mt-4 text-center text-[var(--muted)]">
           ← חזרה לבית
@@ -180,7 +180,7 @@ export default function ReportPage() {
   const hasData = players.length > 0 || events.length > 0;
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 page-shell pb-10">
       <AppHeader
         title={`דוח מול ${match?.opponent ?? ""}`}
         subtitle={match ? new Date(match.match_date).toLocaleDateString("he-IL") : undefined}

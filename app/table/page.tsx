@@ -40,7 +40,7 @@ export default function TablePage() {
   const syncedAt = formatIfaFetchedAt(fetchedAt);
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-nav">
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell pb-nav">
       <AppHeader
         title="טבלה"
         subtitle="ליגה ג׳ שומרון · מההתאחדות"

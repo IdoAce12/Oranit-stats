@@ -39,7 +39,7 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="login-screen relative mx-auto flex min-h-dvh w-full max-w-md flex-1 flex-col px-4 pt-16 pb-10">
+    <main className="login-screen relative mx-auto flex min-h-full w-full max-w-md flex-1 flex-col px-4 page-shell pb-10">
       <div className="photo-stage">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/club/08.jpg" alt="" className="photo-slide is-active" />

@@ -26,7 +26,7 @@ export default function SetupPage() {
   return (
     <Suspense
       fallback={
-        <main className="mx-auto w-full max-w-md px-4 pt-6">
+        <main className="mx-auto w-full max-w-md px-4 page-shell">
           <PageSkeleton rows={5} />
         </main>
       }
@@ -329,7 +329,7 @@ function SetupInner() {
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-28">
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell pb-28">
       <AppHeader
         title={titles[step].title}
         subtitle={titles[step].subtitle}

@@ -545,7 +545,7 @@ export default function LivePage() {
 
   if (fatalError) {
     return (
-      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-8">
+      <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell">
         <p className="rounded-2xl border border-red-500/40 bg-red-500/10 p-4 text-red-200">{fatalError}</p>
         <Link href="/" className="mt-4 text-center text-[var(--muted)]">
           ← חזרה לבית
