@@ -33,6 +33,7 @@ import {
   type CompareSlotKey,
 } from "@/lib/trendMetrics";
 import { uniqueTrendLabels } from "@/lib/trendLabel";
+import { MATCH_TYPE_LABELS, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "@/lib/types";
 
 const LOAD_TIMEOUT_MS = 12000;
 
