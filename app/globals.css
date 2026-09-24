@@ -2,21 +2,21 @@
 
 :root,
 [data-theme="dark"] {
-  --bg: #070d24;
-  --panel: rgba(255, 255, 255, 0.045);
-  --panel-strong: rgba(255, 255, 255, 0.08);
-  --border: rgba(255, 255, 255, 0.09);
-  --border-strong: rgba(255, 255, 255, 0.16);
-  --text: #eef2f8;
-  --muted: rgba(238, 242, 248, 0.55);
-  --muted-2: rgba(238, 242, 248, 0.38);
-  --accent: #34d399;
-  --accent-strong: #10b981;
+  --bg: #070504;
+  --panel: rgba(255, 248, 240, 0.045);
+  --panel-strong: rgba(255, 248, 240, 0.08);
+  --border: rgba(255, 236, 210, 0.1);
+  --border-strong: rgba(255, 236, 210, 0.18);
+  --text: #f6f1ea;
+  --muted: rgba(246, 241, 234, 0.58);
+  --muted-2: rgba(246, 241, 234, 0.38);
+  --accent: #e8c9a0;
+  --accent-strong: #c4a06a;
   --danger: #f87171;
   --warn: #fbbf24;
-  --info: #60a5fa;
+  --info: #93c5fd;
   --zebra-odd: transparent;
-  --zebra-even: rgba(96, 165, 250, 0.16);
+  --zebra-even: rgba(232, 201, 160, 0.1);
 }
 
 [data-theme="light"] {
@@ -56,10 +56,15 @@
   opacity: 0.1;
 }
 
+[data-theme="light"] .league-table tbody tr.is-us td {
+  background: rgba(13, 148, 136, 0.12) !important;
+}
+
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--text);
-  --font-sans: var(--font-assistant), system-ui, "Segoe UI", Arial, sans-serif;
+  --font-sans: var(--font-heebo), system-ui, "Segoe UI", Arial, sans-serif;
+  --font-display: var(--font-frank), var(--font-heebo), serif;
 }
 
 html,
@@ -82,9 +87,9 @@ button {
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(60% 45% at 85% -5%, rgba(37, 99, 235, 0.22), transparent 60%),
-    radial-gradient(55% 40% at 0% 0%, rgba(30, 64, 175, 0.18), transparent 55%),
-    linear-gradient(180deg, #0a1433 0%, #070d24 55%, #050918 100%);
+    radial-gradient(55% 40% at 90% -8%, rgba(196, 160, 106, 0.16), transparent 58%),
+    radial-gradient(50% 36% at 0% 0%, rgba(80, 24, 18, 0.35), transparent 52%),
+    linear-gradient(180deg, #120e0c 0%, #070504 55%, #050403 100%);
 }
 
 .home-crest-bg {
@@ -148,7 +153,7 @@ table tbody tr:nth-child(even) td {
 }
 .field:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.15);
+  box-shadow: 0 0 0 3px rgba(196, 160, 106, 0.18);
 }
 .field::placeholder {
   color: var(--muted-2);
@@ -173,9 +178,9 @@ table tbody tr:nth-child(even) td {
 }
 
 .btn-primary {
-  background: linear-gradient(180deg, var(--accent), var(--accent-strong));
-  color: #04150e;
-  box-shadow: 0 10px 26px -12px rgba(16, 185, 129, 0.9);
+  background: linear-gradient(180deg, #f0d7b0, #c4a06a);
+  color: #1a120c;
+  box-shadow: 0 12px 28px -14px rgba(196, 160, 106, 0.95);
 }
 .btn-ghost {
   background: var(--panel-strong);
@@ -209,6 +214,264 @@ table tbody tr:nth-child(even) td {
 
 .compare-tint {
   color: var(--compare-tint);
+}
+
+/* ---------- בית קולנועי ---------- */
+
+.home-screen {
+  position: relative;
+  color: #f6f1ea;
+}
+
+.home-hero {
+  position: relative;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.photo-stage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  touch-action: manipulation;
+  background: #070504;
+}
+
+.photo-slide {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 22%;
+  opacity: 0;
+  transform: scale(1.06);
+  transition: opacity 1.15s ease;
+  pointer-events: none;
+  user-select: none;
+}
+
+.photo-slide.is-active {
+  opacity: 1;
+  animation: kenburns 18s ease-out forwards;
+}
+
+@keyframes kenburns {
+  from {
+    transform: scale(1.06);
+  }
+  to {
+    transform: scale(1.16);
+  }
+}
+
+.photo-veil {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(7, 5, 4, 0.55) 0%, rgba(7, 5, 4, 0.12) 28%, rgba(7, 5, 4, 0.2) 55%, rgba(7, 5, 4, 0.88) 100%),
+    radial-gradient(90% 50% at 50% 100%, rgba(0, 0, 0, 0.55), transparent 70%);
+  pointer-events: none;
+}
+
+.photo-dots {
+  position: absolute;
+  top: calc(4.75rem + env(safe-area-inset-top));
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.photo-dots button {
+  height: 5px;
+  width: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.32);
+  transition: width 0.25s ease, background 0.25s ease;
+}
+
+.photo-dots button.is-on {
+  width: 18px;
+  background: #f0d7b0;
+}
+
+.home-top {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(12px + env(safe-area-inset-top)) 20px 0;
+}
+
+.home-kicker {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(246, 241, 234, 0.62);
+}
+
+.home-hello {
+  font-family: var(--font-frank), serif;
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  text-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.home-ghost-btn {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(246, 241, 234, 0.88);
+  font-size: 12px;
+  font-weight: 600;
+  backdrop-filter: blur(12px);
+}
+
+.home-bottom {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: calc(5.1rem + env(safe-area-inset-bottom));
+  padding: 0 18px 12px;
+}
+
+.match-glass {
+  border-radius: 24px;
+  border: 1px solid rgba(255, 236, 210, 0.16);
+  background: linear-gradient(180deg, rgba(20, 14, 10, 0.55), rgba(12, 9, 7, 0.72));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 24px 50px -24px rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  padding: 18px 18px 16px;
+}
+
+.match-title {
+  font-family: var(--font-frank), serif;
+  font-size: 2.05rem;
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  text-shadow: 0 12px 30px rgba(0, 0, 0, 0.4);
+}
+
+.home-feed {
+  position: relative;
+  z-index: 3;
+  padding: 20px 18px calc(5.5rem + env(safe-area-inset-bottom));
+}
+
+.home-screen .countdown-cell {
+  border-radius: 16px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.home-hero .btn-ghost,
+.home-top .btn-ghost,
+.login-screen .btn-ghost {
+  color: #f6f1ea;
+  background: rgba(0, 0, 0, 0.28);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+@media (max-height: 720px) {
+  .home-hello {
+    font-size: 1.35rem;
+  }
+  .match-title {
+    font-size: 1.55rem;
+  }
+  .match-glass {
+    padding: 14px 16px 13px;
+  }
+}
+
+.bottom-nav {
+  position: fixed;
+  z-index: 60;
+  left: 12px;
+  right: 12px;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  display: flex;
+  justify-content: space-around;
+  gap: 4px;
+  padding: 8px 6px 7px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 236, 210, 0.14);
+  background: rgba(12, 9, 7, 0.72);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+.bottom-tab {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 2px 2px;
+  color: rgba(246, 241, 234, 0.45);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.bottom-tab.is-active {
+  color: #f0d7b0;
+}
+
+.league-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.league-table th {
+  color: var(--muted);
+  font-weight: 700;
+  text-align: center;
+  padding: 8px 4px;
+  font-size: 10px;
+}
+
+.league-table td {
+  text-align: center;
+  padding: 8px 4px;
+}
+
+.league-table .team-name {
+  text-align: right;
+  font-weight: 700;
+  max-width: 9.5rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.league-table tbody tr.is-us td {
+  background: rgba(232, 201, 160, 0.18) !important;
+  color: var(--accent);
+}
+
+.pb-nav {
+  padding-bottom: calc(5.75rem + env(safe-area-inset-bottom));
 }
 
 .print-only {
@@ -253,6 +516,7 @@ table tbody tr:nth-child(even) td {
 
   .app-bg,
   .home-crest-bg,
+  .bottom-nav,
   .no-print {
     display: none !important;
   }

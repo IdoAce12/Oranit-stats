@@ -4,11 +4,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { usePathname, useRouter } from "next/navigation";
 import type { AppSession } from "@/lib/types";
 import { isPublicPath, playerProfilePath } from "@/lib/authPaths";
+import { greetingName } from "@/lib/playerName";
 
 interface AuthValue {
   user: AppSession | null;
   loading: boolean;
   isCoach: boolean;
+  displayName: string;
   refresh: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -17,6 +19,7 @@ const AuthContext = createContext<AuthValue>({
   user: null,
   loading: true,
   isCoach: false,
+  displayName: "",
   refresh: async () => {},
   logout: async () => {},
 });
@@ -66,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       isCoach: user?.role === "coach",
+      displayName: user ? greetingName(user) : "",
       refresh,
       logout,
     }),

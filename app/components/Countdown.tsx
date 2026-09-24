@@ -38,7 +38,7 @@ export function Countdown({ target }: { target: Date }) {
   return (
     <div className="grid grid-cols-4 gap-2" dir="ltr">
       {cells.map((c) => (
-        <div key={c.label} className="rounded-2xl bg-black/20 px-1 py-2 text-center">
+        <div key={c.label} className="countdown-cell rounded-2xl bg-black/20 px-1 py-2 text-center">
           <div className="tabular text-2xl font-black">{c.label === "ימים" ? c.n : pad(c.n)}</div>
           <div className="text-[10px] font-bold text-[var(--muted)]">{c.label}</div>
         </div>

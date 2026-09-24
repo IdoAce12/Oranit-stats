@@ -1,15 +1,22 @@
 import type { Metadata, Viewport } from "next";
-import { Assistant } from "next/font/google";
+import { Frank_Ruhl_Libre, Heebo } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { ServiceWorkerRegister } from "./sw-register";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { AuthProvider } from "./components/AuthProvider";
+import { AppShell } from "./components/AppShell";
 
-const assistant = Assistant({
+const heebo = Heebo({
   subsets: ["hebrew", "latin"],
   weight: ["400", "500", "600", "700", "800"],
-  variable: "--font-assistant",
+  variable: "--font-heebo",
+});
+
+const display = Frank_Ruhl_Libre({
+  subsets: ["hebrew", "latin"],
+  weight: ["400", "500", "700"],
+  variable: "--font-frank",
 });
 
 export const metadata: Metadata = {
@@ -28,11 +35,12 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#070d24",
+  themeColor: "#070504",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -41,7 +49,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="he" dir="rtl" className={`${assistant.variable} h-full antialiased`} data-theme="dark" suppressHydrationWarning>
+    <html lang="he" dir="rtl" className={`${heebo.variable} ${display.variable} h-full antialiased`} data-theme="dark" suppressHydrationWarning>
       <body className="min-h-full flex flex-col select-none">
         <Script
           id="scout-theme"
@@ -54,7 +62,7 @@ export default function RootLayout({
           <AuthProvider>
           <ServiceWorkerRegister />
           <div className="app-bg" aria-hidden />
-          {children}
+          <AppShell>{children}</AppShell>
           </AuthProvider>
         </ThemeProvider>
       </body>

@@ -7,16 +7,21 @@ import { loadSeasonBundle } from "@/lib/db";
 import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
+  explainImpact,
+  type SeasonImpact,
 } from "@/lib/impactScore";
-import { findRowByPlayerKey } from "@/lib/playerKey";
+import { findRowByPlayerKey, playerMatchesKey } from "@/lib/playerKey";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
+import { MATCH_TYPE_LABELS, Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
 import { AppHeader } from "../../../components/AppHeader";
 import { PageSkeleton } from "../../../components/Skeleton";
 import { RadarProfile } from "../../../components/RadarProfile";
+import { RadarAxisSheet } from "../../../components/RadarAxisSheet";
 import { TrendChart, TrendPoint } from "../../../components/TrendChart";
 import { useAuth } from "../../../components/AuthProvider";
 import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
+import { describeRadarAxis, radarAxisFromLabel } from "@/lib/radarExplain";
+import { matchIdsForTypes, OFFICIAL_MATCH_TYPES } from "@/lib/matchFilter";
 import { withTimeout } from "@/lib/withTimeout";
 import { METRIC_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
 
@@ -31,10 +36,33 @@ const PLAYER_TREND_METRICS: MetricKey[] = [
 
 const LOAD_TIMEOUT_MS = 12000;
 
+function emptySeasonRow(base: SeasonImpact): SeasonImpact {
+  return {
+    ...base,
+    score: 0,
+    matchesPlayed: 0,
+    keyPasses: 0,
+    goals: 0,
+    assists: 0,
+    tackles: 0,
+    lossesTotal: 0,
+    defLosses: 0,
+    midLosses: 0,
+    attLosses: 0,
+    shotsInBox: 0,
+    shotsOutBox: 0,
+    aerialWon: 0,
+    aerialLost: 0,
+    groundWon: 0,
+    groundLost: 0,
+    perMatch: 0,
+  };
+}
+
 export default function SeasonPlayerPage() {
   const params = useParams<{ key: string }>();
   const playerKey = decodeURIComponent(params.key ?? "");
-  const { user, isCoach } = useAuth();
+  const { displayName, isCoach } = useAuth();
 
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -43,6 +71,8 @@ export default function SeasonPlayerPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [trendMetric, setTrendMetric] = useState<MetricKey>("score");
+  const [officialOnly, setOfficialOnly] = useState(true);
+  const [radarAxis, setRadarAxis] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -61,19 +91,62 @@ export default function SeasonPlayerPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  const allRows = useMemo(
-    () => computeSeasonImpact(events, players, squad),
-    [events, players, squad]
+  const allowedMatchIds = useMemo(
+    () => matchIdsForTypes(matches, officialOnly ? OFFICIAL_MATCH_TYPES : []),
+    [matches, officialOnly]
   );
-  const seasonRow = useMemo(
-    () => findRowByPlayerKey(allRows, playerKey, players, squad),
-    [allRows, playerKey, players, squad]
+  const filteredMatches = useMemo(
+    () => (allowedMatchIds ? matches.filter((m) => allowedMatchIds.has(m.id)) : matches),
+    [matches, allowedMatchIds]
+  );
+  const filteredEvents = useMemo(
+    () => (allowedMatchIds ? events.filter((e) => allowedMatchIds.has(e.match_id)) : events),
+    [events, allowedMatchIds]
+  );
+  const filteredPlayers = useMemo(
+    () => (allowedMatchIds ? players.filter((p) => allowedMatchIds.has(p.match_id)) : players),
+    [players, allowedMatchIds]
   );
 
-  const matchLines = useMemo(
-    () => computePlayerSeasonMatches(playerKey, events, players, matches, squad),
-    [playerKey, events, players, matches, squad]
+  const identityRow = useMemo(
+    () => findRowByPlayerKey(computeSeasonImpact(events, players, squad), playerKey, players, squad),
+    [events, players, squad, playerKey]
   );
+
+  const allRows = useMemo(
+    () => computeSeasonImpact(filteredEvents, filteredPlayers, squad, players),
+    [filteredEvents, filteredPlayers, squad, players]
+  );
+  const seasonRow = useMemo(() => {
+    const row = findRowByPlayerKey(allRows, playerKey, players, squad);
+    if (row) return row;
+    if (identityRow) return emptySeasonRow(identityRow);
+    return null;
+  }, [allRows, playerKey, players, squad, identityRow]);
+
+  const matchLines = useMemo(
+    () =>
+      computePlayerSeasonMatches(playerKey, filteredEvents, filteredPlayers, filteredMatches, squad),
+    [playerKey, filteredEvents, filteredPlayers, filteredMatches, squad]
+  );
+
+  const matchTypeById = useMemo(
+    () => new Map(filteredMatches.map((m) => [m.id, m.match_type ?? "league"] as const)),
+    [filteredMatches]
+  );
+
+  const myEvents = useMemo(() => {
+    const ids = new Set<string>();
+    for (const p of filteredPlayers) {
+      if (!playerMatchesKey(p, playerKey, squad)) continue;
+      ids.add(p.id);
+      if (p.squad_player_id) ids.add(p.squad_player_id);
+    }
+    if (playerKey.startsWith("sq:")) ids.add(playerKey.slice(3));
+    return filteredEvents.filter((e) => e.player_id && ids.has(e.player_id));
+  }, [filteredEvents, filteredPlayers, playerKey, squad]);
+
+  const impactBreakdown = useMemo(() => explainImpact(myEvents), [myEvents]);
 
   const radar = useMemo(
     () => (seasonRow ? buildRadarData(seasonRow, allRows) : []),
@@ -107,8 +180,8 @@ export default function SeasonPlayerPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto w-full max-w-2xl px-4 pt-6">
-        <AppHeader title="פרופיל" backHref="/season" />
+      <main className="mx-auto w-full max-w-2xl px-4 pt-6 pb-nav">
+        <AppHeader title="פרופיל" />
         <PageSkeleton />
       </main>
     );
@@ -121,7 +194,7 @@ export default function SeasonPlayerPage() {
           {error ?? "שחקן לא נמצא"}
         </p>
         <Link href="/season" className="mt-4 text-center text-[var(--muted)]">
-          ← חזרה לטבלה
+          ← חזרה לנתונים
         </Link>
       </main>
     );
@@ -130,21 +203,46 @@ export default function SeasonPlayerPage() {
   const avg = (n: number) =>
     seasonRow.matchesPlayed > 0 ? (n / seasonRow.matchesPlayed).toFixed(1) : "0";
 
+  const axisKey = radarAxis ? radarAxisFromLabel(radarAxis) : null;
+  const axisExplain =
+    axisKey && seasonRow
+      ? describeRadarAxis(axisKey, seasonRow, radar.find((d) => d.axis === radarAxis)?.a ?? 0)
+      : null;
+
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 pt-6 pb-nav">
       {!isCoach && (
-        <p className="mb-2 text-center text-4xl font-black leading-tight">שלום, {user?.username}</p>
+        <p className="mb-2 text-center font-[family-name:var(--font-frank)] text-3xl font-bold leading-tight">
+          שלום, {displayName}
+        </p>
       )}
       <AppHeader
         title={seasonRow.label}
         subtitle="הנתונים שלי"
-        backHref={isCoach ? "/season" : "/"}
+        backHref={isCoach ? "/season" : undefined}
         right={
           <button type="button" onClick={() => window.print()} className="btn btn-ghost no-print h-9 px-2 text-xs">
             PDF
           </button>
         }
       />
+
+      <div className="mb-4 flex gap-1.5">
+        <button
+          type="button"
+          onClick={() => setOfficialOnly(true)}
+          className={`btn h-9 flex-1 px-3 text-xs ${officialOnly ? "btn-primary" : "btn-ghost"}`}
+        >
+          רשמי · ליגה וגביע
+        </button>
+        <button
+          type="button"
+          onClick={() => setOfficialOnly(false)}
+          className={`btn h-9 flex-1 px-3 text-xs ${!officialOnly ? "btn-primary" : "btn-ghost"}`}
+        >
+          הכל כולל אימונים
+        </button>
+      </div>
 
       <section className="card mb-4 p-4">
         <div className="flex items-end justify-between gap-3">
@@ -173,6 +271,10 @@ export default function SeasonPlayerPage() {
             </p>
             <p>
               משחקים: <b className="tabular text-[var(--text)]">{seasonRow.matchesPlayed}</b>
+              <span className="text-[var(--muted-2)]">
+                {" "}
+                · {officialOnly ? "ליגה וגביע" : "כל המשחקים"}
+              </span>
             </p>
           </div>
         </div>
@@ -181,7 +283,12 @@ export default function SeasonPlayerPage() {
       {radar.length > 0 && (
         <section className="card mb-4 p-3">
           <p className="label mb-1">פרופיל רדאר מול הקבוצה</p>
-          <RadarProfile data={radar} aLabel={seasonRow.label} />
+          <p className="mb-2 text-[11px] text-[var(--muted-2)]">לחצו על ציר — למשל השפעה — לפירוט</p>
+          <RadarProfile
+            data={radar}
+            aLabel={seasonRow.label}
+            onAxisSelect={setRadarAxis}
+          />
         </section>
       )}
 
@@ -266,6 +373,8 @@ export default function SeasonPlayerPage() {
                     {line.matchDate
                       ? new Date(line.matchDate).toLocaleDateString("he-IL")
                       : "—"}
+                    {" · "}
+                    {MATCH_TYPE_LABELS[matchTypeById.get(line.matchId) ?? "league"]}
                   </p>
                   <p className="mt-1 text-[11px] text-[var(--muted-2)]">
                     {line.goals} שער · {line.assists} ביש · {line.keyPasses} מס״מ · {line.tackles}{" "}
@@ -292,6 +401,14 @@ export default function SeasonPlayerPage() {
             </li>
           ))}
         </ul>
+      )}
+
+      {axisExplain && (
+        <RadarAxisSheet
+          explain={axisExplain}
+          breakdown={impactBreakdown}
+          onClose={() => setRadarAxis(null)}
+        />
       )}
     </main>
   );

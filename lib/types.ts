@@ -30,6 +30,7 @@ export interface AppSession {
   username: string;
   role: UserRole;
   squadPlayerId: string | null;
+  playerName: string | null;
 }
 
 // סוג משחק — לסיווג וסינון בטבלאות
@@ -53,6 +54,7 @@ export interface Match {
   status: MatchStatus;
   match_type: MatchType;
   kickoff_at?: string | null;
+  ifa_key?: string | null;
   ended_at: string | null;
   created_at: string;
   notes?: string;

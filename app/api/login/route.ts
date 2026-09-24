@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getSupabase } from "@/lib/supabaseClient";
 import { SESSION_COOKIE, SESSION_DAYS, signSession } from "@/lib/session";
+import { squadPlayerName } from "@/lib/playerName";
 import type { AppSession, UserRole } from "@/lib/types";
 
 export async function POST(request: Request) {
@@ -30,9 +31,15 @@ export async function POST(request: Request) {
 
   if (error) {
     const msg = error.message ?? "";
+    if (/crypt\(/i.test(msg) || /function crypt/i.test(msg)) {
+      return NextResponse.json(
+        { error: "חסרה הגדרת התחברות — הרץ את db/migration_v11.sql ב-Supabase SQL Editor" },
+        { status: 500 }
+      );
+    }
     if (/verify_login|schema cache|does not exist/i.test(msg)) {
       return NextResponse.json(
-        { error: "חסרה טבלת משתמשים — הרץ את db/migration_v9.sql ואז db/migration_v10.sql ב-Supabase" },
+        { error: "חסרה טבלת משתמשים — הרץ את db/migration_v9.sql, v10 ו-v11 ב-Supabase" },
         { status: 500 }
       );
     }
@@ -44,11 +51,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "שם או סיסמה שגויים" }, { status: 401 });
   }
 
+  const squadPlayerId = row.squad_player_id ?? null;
   const user: AppSession = {
     id: row.id,
     username: row.username,
     role: row.role as UserRole,
-    squadPlayerId: row.squad_player_id ?? null,
+    squadPlayerId,
+    playerName: await squadPlayerName(squadPlayerId),
   };
 
   const store = await cookies();

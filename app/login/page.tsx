@@ -39,8 +39,12 @@ export default function LoginPage() {
   };
 
   return (
-    <main className="relative mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-16 pb-10">
-      <div className="home-crest-bg" aria-hidden />
+    <main className="login-screen relative mx-auto flex min-h-dvh w-full max-w-md flex-1 flex-col px-4 pt-16 pb-10">
+      <div className="photo-stage">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/club/08.jpg" alt="" className="photo-slide is-active" />
+        <div className="photo-veil" aria-hidden />
+      </div>
       <div className="relative z-10">
         <div className="mb-8 flex items-center gap-3">
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -50,15 +54,15 @@ export default function LoginPage() {
             className="h-14 w-14 rounded-full object-cover ring-2 ring-white/25"
           />
           <div>
-            <h1 className="text-2xl font-extrabold leading-tight">הפועל אורנית</h1>
-            <p className="text-sm text-[var(--muted)]">כניסה עם שם וסיסמה</p>
+            <p className="home-kicker">הפועל אורנית</p>
+            <h1 className="home-hello text-[1.85rem]">כניסה</h1>
           </div>
           <div className="ms-auto">
             <ThemeToggle />
           </div>
         </div>
 
-        <form onSubmit={onSubmit} className="card flex flex-col gap-3 p-5">
+        <form onSubmit={onSubmit} className="match-glass flex flex-col gap-3">
           <label className="flex flex-col gap-1.5">
             <span className="label">שם</span>
             <input

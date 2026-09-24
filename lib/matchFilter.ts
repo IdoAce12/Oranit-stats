@@ -1,5 +1,8 @@
 import { MATCH_TYPE_LABELS, Match, MatchType } from "./types";
 
+/** ליגה וגביע — בלי אימונים / ידידות. */
+export const OFFICIAL_MATCH_TYPES: MatchType[] = ["league", "cup"];
+
 /** ריק = כל הסוגים. */
 export function matchIdsForTypes(matches: Match[], types: MatchType[]): Set<string> | null {
   if (types.length === 0) return null;

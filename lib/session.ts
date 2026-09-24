@@ -38,11 +38,16 @@ export function verifySession(token: string | undefined | null, now = Date.now()
       return null;
     }
     if (typeof payload.exp !== "number" || payload.exp < now) return null;
+    const playerName =
+      typeof payload.playerName === "string" && payload.playerName.trim()
+        ? payload.playerName.trim()
+        : null;
     return {
       id: payload.id,
       username: payload.username,
       role: payload.role,
       squadPlayerId: payload.squadPlayerId ?? null,
+      playerName,
     };
   } catch {
     return null;

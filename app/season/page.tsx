@@ -323,9 +323,9 @@ export default function SeasonPage() {
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col px-4 pt-6 pb-nav">
       <AppHeader
-        title="טבלה עונתית"
+        title="נתונים"
         subtitle={
           loading
             ? "טוען..."
@@ -333,7 +333,6 @@ export default function SeasonPage() {
                 selectedTypes.length === 0 ? "" : `/${matchesCount}`
               } משחקים · ${rows.length} שחקנים${rateMode === "per90" ? " · ל־90׳" : ""}`
         }
-        backHref="/"
       />
 
       <ConfigBanner />

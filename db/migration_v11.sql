@@ -1,25 +1,11 @@
 -- =============================================================
--- מיגרציה v10 — שדה password ברור למילוי ידני בטבלת app_users
--- הרץ ב-Supabase SQL Editor (אחרי v9, או ביחד איתו)
+-- מיגרציה v11 — תיקון התחברות
+-- ב-Supabase, crypt יושב ב-extensions. verify_login הוגדר עם
+-- search_path = public בלבד, לכן ההתחברות נכשלה גם כשהסיסמה נכונה.
+-- הרץ ב-SQL Editor ואז נסה שוב להתחבר.
 -- =============================================================
 
-create extension if not exists pgcrypto;
-
-create table if not exists public.app_users (
-  id uuid primary key default gen_random_uuid(),
-  username text not null,
-  password text,
-  password_hash text,
-  role text not null check (role in ('coach', 'player')),
-  squad_player_id uuid references public.squad_players(id) on delete set null,
-  created_at timestamptz not null default now()
-);
-
-alter table public.app_users add column if not exists password text;
-alter table public.app_users alter column password_hash drop not null;
-
-create unique index if not exists app_users_username_lower
-  on public.app_users (lower(username));
+create extension if not exists pgcrypto with schema extensions;
 
 create or replace function public.app_users_hash_password()
 returns trigger
@@ -42,11 +28,6 @@ begin
   return new;
 end;
 $$;
-
-drop trigger if exists app_users_hash_password on public.app_users;
-create trigger app_users_hash_password
-  before insert or update of password, password_hash on public.app_users
-  for each row execute function public.app_users_hash_password();
 
 create or replace function public.verify_login(p_username text, p_password text)
 returns table (
@@ -74,10 +55,6 @@ begin
   limit 1;
 end;
 $$;
-
-revoke all on public.app_users from anon, authenticated, public;
-alter table public.app_users enable row level security;
-drop policy if exists "public all app_users" on public.app_users;
 
 grant execute on function public.verify_login(text, text) to anon, authenticated;
 

@@ -15,9 +15,10 @@ interface Props {
   aLabel?: string;
   bLabel?: string;
   series?: RadarSeries[];
+  onAxisSelect?: (axisLabel: string) => void;
 }
 
-export function RadarProfile({ data, aLabel, bLabel, series }: Props) {
+export function RadarProfile({ data, aLabel, bLabel, series, onAxisSelect }: Props) {
   const resolved: RadarSeries[] =
     series && series.length > 0
       ? series
@@ -50,6 +51,14 @@ export function RadarProfile({ data, aLabel, bLabel, series }: Props) {
                   fill={s.color}
                   fillOpacity={fillOpacity}
                   strokeWidth={2}
+                  onClick={
+                    onAxisSelect
+                      ? (payload) => {
+                          const axis = (payload as { axis?: string } | undefined)?.axis;
+                          if (axis) onAxisSelect(axis);
+                        }
+                      : undefined
+                  }
                 />
               ))}
             </RadarChart>
@@ -58,14 +67,28 @@ export function RadarProfile({ data, aLabel, bLabel, series }: Props) {
         {data.map((d, i) => {
           const angle = -Math.PI / 2 + (i * 2 * Math.PI) / data.length;
           const r = 46;
+          const pos = {
+            left: `${50 + r * Math.cos(angle)}%`,
+            top: `${50 + r * Math.sin(angle)}%`,
+          };
+          if (onAxisSelect) {
+            return (
+              <button
+                key={d.axis}
+                type="button"
+                onClick={() => onAxisSelect(d.axis)}
+                className="absolute -translate-x-1/2 -translate-y-1/2 cursor-pointer whitespace-nowrap rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-[var(--text)] underline decoration-[var(--accent)]/50 underline-offset-4 active:scale-95"
+                style={pos}
+              >
+                {d.axis}
+              </button>
+            );
+          }
           return (
             <span
               key={d.axis}
               className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] font-semibold text-[var(--muted)]"
-              style={{
-                left: `${50 + r * Math.cos(angle)}%`,
-                top: `${50 + r * Math.sin(angle)}%`,
-              }}
+              style={pos}
             >
               {d.axis}
             </span>

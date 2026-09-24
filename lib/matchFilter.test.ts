@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatMatchOption, matchIdsForTypes, toggleMatchType } from "./matchFilter";
+import { formatMatchOption, matchIdsForTypes, OFFICIAL_MATCH_TYPES, toggleMatchType } from "./matchFilter";
 import { makeMatch } from "./testHelpers";
 
 describe("matchIdsForTypes", () => {
@@ -17,6 +17,12 @@ describe("matchIdsForTypes", () => {
     const ids = matchIdsForTypes(matches, ["league", "cup"]);
     expect(ids?.has("l")).toBe(true);
     expect(ids?.has("c")).toBe(true);
+    expect(ids?.has("f")).toBe(false);
+  });
+
+  it("רשמי = ליגה וגביע", () => {
+    expect(OFFICIAL_MATCH_TYPES).toEqual(["league", "cup"]);
+    const ids = matchIdsForTypes(matches, OFFICIAL_MATCH_TYPES);
     expect(ids?.has("f")).toBe(false);
   });
 });

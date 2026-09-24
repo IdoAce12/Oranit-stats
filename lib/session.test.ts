@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { greetingName } from "./playerName";
 import { signSession, verifySession } from "./session";
-import { nextScheduledMatch, splitMatches, toKickoffIso } from "./fixtures";
-import { isCoachOnlyPath, isPublicPath, playerOwnsProfilePath } from "./authPaths";
+import { nextScheduledMatch, splitMatches, toIsraelKickoffIso, toKickoffIso } from "./fixtures";
+import { isCoachOnlyPath, isPublicPath, isTabPath, playerOwnsProfilePath } from "./authPaths";
 import { makeMatch } from "./testHelpers";
 
 describe("session", () => {
@@ -11,12 +12,14 @@ describe("session", () => {
       username: "מאמן",
       role: "coach",
       squadPlayerId: null,
+      playerName: null,
     });
     expect(verifySession(token)).toEqual({
       id: "u1",
       username: "מאמן",
       role: "coach",
       squadPlayerId: null,
+      playerName: null,
     });
   });
 
@@ -26,9 +29,26 @@ describe("session", () => {
       username: "גיא",
       role: "player",
       squadPlayerId: "sq1",
+      playerName: "גיא כהן",
+    });
+    expect(verifySession(token)).toEqual({
+      id: "u1",
+      username: "גיא",
+      role: "player",
+      squadPlayerId: "sq1",
+      playerName: "גיא כהן",
     });
     expect(verifySession(token + "x")).toBeNull();
     expect(verifySession(token, Date.now() + 40 * 24 * 60 * 60 * 1000)).toBeNull();
+  });
+});
+
+describe("greetingName", () => {
+  it("מעדיף שם שחקן על שם משתמש", () => {
+    expect(
+      greetingName({ username: "guy12", playerName: "גיא כהן" })
+    ).toBe("גיא כהן");
+    expect(greetingName({ username: "guy12", playerName: null })).toBe("guy12");
   });
 });
 
@@ -54,6 +74,11 @@ describe("fixtures", () => {
   it("ממיר תאריך ושעה ל-ISO", () => {
     expect(toKickoffIso("2026-10-01", "20:30")).toMatch(/^2026-10-01|^2026-09-30/);
   });
+
+  it("ממיר שעת שריקה לפי שעון ישראל", () => {
+    expect(toIsraelKickoffIso("2026-09-28", "20:30")).toBe("2026-09-28T17:30:00.000Z");
+    expect(toIsraelKickoffIso("2026-12-01", "20:30")).toBe("2026-12-01T18:30:00.000Z");
+  });
 });
 
 describe("authPaths", () => {
@@ -63,6 +88,9 @@ describe("authPaths", () => {
     expect(isCoachOnlyPath("/season")).toBe(true);
     expect(isCoachOnlyPath("/season/player/sq:1")).toBe(false);
     expect(isCoachOnlyPath("/calendar")).toBe(false);
+    expect(isCoachOnlyPath("/table")).toBe(false);
+    expect(isTabPath("/table")).toBe(true);
+    expect(isTabPath("/season")).toBe(true);
   });
 
   it("מאפשר לשחקן רק את הפרופיל שלו", () => {

@@ -23,6 +23,7 @@ create table if not exists public.matches (
   status text not null default 'live' check (status in ('scheduled','live','finished')),
   match_type text not null default 'league' check (match_type in ('league','cup','friendly')),
   kickoff_at timestamptz,
+  ifa_key text,
   ended_at timestamptz,
   notes text not null default '',
   final_half int,
@@ -79,6 +80,18 @@ create table if not exists public.substitutions (
 
 create index if not exists substitutions_match_idx on public.substitutions(match_id);
 
+create unique index if not exists matches_ifa_key_uniq
+  on public.matches (ifa_key)
+  where ifa_key is not null;
+
+-- מטמון טבלת ליגה ומשחקים מההתאחדות
+create table if not exists public.ifa_cache (
+  id text primary key,
+  standings jsonb not null default '[]'::jsonb,
+  fixtures jsonb not null default '[]'::jsonb,
+  fetched_at timestamptz not null default now()
+);
+
 -- =============================================================
 -- Row Level Security
 -- כלי לאיש-אחד: פותחים גישה מלאה עם anon key (ללא התחברות).
@@ -89,18 +102,21 @@ alter table public.matches enable row level security;
 alter table public.players enable row level security;
 alter table public.events enable row level security;
 alter table public.substitutions enable row level security;
+alter table public.ifa_cache enable row level security;
 
 drop policy if exists "public all squad" on public.squad_players;
 drop policy if exists "public all matches" on public.matches;
 drop policy if exists "public all players" on public.players;
 drop policy if exists "public all events" on public.events;
 drop policy if exists "public all substitutions" on public.substitutions;
+drop policy if exists "public all ifa_cache" on public.ifa_cache;
 
 create policy "public all squad" on public.squad_players for all using (true) with check (true);
 create policy "public all matches" on public.matches for all using (true) with check (true);
 create policy "public all players" on public.players for all using (true) with check (true);
 create policy "public all events" on public.events for all using (true) with check (true);
 create policy "public all substitutions" on public.substitutions for all using (true) with check (true);
+create policy "public all ifa_cache" on public.ifa_cache for all using (true) with check (true);
 
 -- =============================================================
 -- כניסת מאמן / שחקן — טבלה ידנית, סיסמה מוצפנת ב-trigger
@@ -123,6 +139,7 @@ create unique index if not exists app_users_username_lower
 create or replace function public.app_users_hash_password()
 returns trigger
 language plpgsql
+set search_path = public, extensions
 as $$
 declare
   raw text;
@@ -134,7 +151,7 @@ begin
   if raw like '$2%' then
     new.password_hash := raw;
   else
-    new.password_hash := crypt(raw, gen_salt('bf'));
+    new.password_hash := extensions.crypt(raw, extensions.gen_salt('bf'));
     new.password := raw;
   end if;
   return new;
@@ -155,17 +172,20 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
 begin
   return query
   select u.id, u.username, u.role, u.squad_player_id
   from public.app_users u
   where lower(u.username) = lower(trim(p_username))
-    and (
-      (u.password is not null and u.password = p_password)
-      or (u.password_hash is not null and u.password_hash = crypt(p_password, u.password_hash))
-    )
+    and case
+      when nullif(trim(coalesce(u.password, '')), '') is not null
+        and u.password = p_password then true
+      when u.password_hash is not null
+        then u.password_hash = extensions.crypt(p_password, u.password_hash)
+      else false
+    end
   limit 1;
 end;
 $$;
@@ -174,3 +194,5 @@ revoke all on public.app_users from anon, authenticated, public;
 alter table public.app_users enable row level security;
 
 grant execute on function public.verify_login(text, text) to anon, authenticated;
+
+notify pgrst, 'reload schema';

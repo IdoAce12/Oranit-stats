@@ -4,6 +4,16 @@ export function isPublicPath(pathname: string): boolean {
   return false;
 }
 
+export function isTabPath(pathname: string): boolean {
+  if (pathname === "/") return true;
+  if (pathname === "/calendar") return true;
+  if (pathname === "/table") return true;
+  if (pathname === "/squad") return true;
+  if (pathname === "/season") return true;
+  if (pathname.startsWith("/season/player/")) return true;
+  return false;
+}
+
 export function isCoachOnlyPath(pathname: string): boolean {
   if (pathname.startsWith("/setup")) return true;
   if (pathname.startsWith("/live")) return true;

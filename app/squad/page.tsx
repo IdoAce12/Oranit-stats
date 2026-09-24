@@ -163,11 +163,10 @@ export default function SquadPage() {
   };
 
   return (
-    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-10">
+    <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-6 pb-nav">
       <AppHeader
         title="הסגל שלי"
         subtitle={`${squad.length} שחקנים`}
-        backHref="/"
       />
 
       <ConfigBanner />

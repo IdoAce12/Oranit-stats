@@ -1,4 +1,5 @@
 import { getSupabase } from "./supabaseClient";
+import type { IfaFixture, IfaStandingRow } from "./ifa/parse";
 import { Half, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "./types";
 
 export class SupabaseNotConfiguredError extends Error {
@@ -108,22 +109,75 @@ export async function createMatch(input: {
   match_type?: MatchType;
   status?: Match["status"];
   kickoff_at?: string | null;
+  ifa_key?: string | null;
+  notes?: string;
 }): Promise<Match> {
   const supabase = requireClient();
-  const { data, error } = await supabase
-    .from("matches")
-    .insert({
-      opponent: input.opponent,
-      match_date: input.match_date,
-      our_team_name: input.our_team_name,
-      match_type: input.match_type ?? "league",
-      status: input.status ?? "live",
-      kickoff_at: input.kickoff_at ?? null,
-    })
-    .select()
-    .single();
+  const row: Record<string, unknown> = {
+    opponent: input.opponent,
+    match_date: input.match_date,
+    our_team_name: input.our_team_name,
+    match_type: input.match_type ?? "league",
+    status: input.status ?? "live",
+    kickoff_at: input.kickoff_at ?? null,
+  };
+  if (input.ifa_key != null) row.ifa_key = input.ifa_key;
+  if (input.notes != null) row.notes = input.notes;
+  const { data, error } = await supabase.from("matches").insert(row).select().single();
   if (error) throw error;
   return data as Match;
+}
+
+export async function updateMatch(
+  id: string,
+  patch: {
+    opponent?: string;
+    match_date?: string;
+    kickoff_at?: string | null;
+    ifa_key?: string | null;
+    notes?: string;
+  }
+): Promise<void> {
+  const supabase = requireClient();
+  const payload: Record<string, unknown> = {};
+  if (patch.opponent !== undefined) payload.opponent = patch.opponent;
+  if (patch.match_date !== undefined) payload.match_date = patch.match_date;
+  if (patch.kickoff_at !== undefined) payload.kickoff_at = patch.kickoff_at;
+  if (patch.ifa_key !== undefined) payload.ifa_key = patch.ifa_key;
+  if (patch.notes !== undefined) payload.notes = patch.notes;
+  if (Object.keys(payload).length === 0) return;
+  const { error } = await supabase.from("matches").update(payload).eq("id", id);
+  if (error) throw error;
+}
+
+export interface IfaCacheRow {
+  id: string;
+  standings: IfaStandingRow[];
+  fixtures: IfaFixture[];
+  fetched_at: string;
+}
+
+export async function getIfaCache(): Promise<IfaCacheRow | null> {
+  const supabase = requireClient();
+  const { data, error } = await supabase.from("ifa_cache").select("*").eq("id", "current").maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return data as IfaCacheRow;
+}
+
+export async function saveIfaCache(input: {
+  standings: IfaStandingRow[];
+  fixtures: IfaFixture[];
+  fetched_at?: string;
+}): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("ifa_cache").upsert({
+    id: "current",
+    standings: input.standings,
+    fixtures: input.fixtures,
+    fetched_at: input.fetched_at ?? new Date().toISOString(),
+  });
+  if (error) throw error;
 }
 
 export async function startMatch(id: string): Promise<void> {

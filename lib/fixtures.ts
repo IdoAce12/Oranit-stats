@@ -16,6 +16,39 @@ export function toKickoffIso(date: string, time: string): string {
   return d.toISOString();
 }
 
+/** שעת שריקה לפי שעון ישראל (כולל שעון קיץ), לשימוש בסנכרון מההתאחדות. */
+export function toIsraelKickoffIso(date: string, time: string, timeZone = "Asia/Jerusalem"): string {
+  const padded = time.length === 4 ? `0${time}` : time;
+  const wanted = `${date}T${padded}:00`;
+  const utcGuess = Date.parse(`${wanted}Z`);
+  if (!Number.isFinite(utcGuess)) return new Date(wanted).toISOString();
+
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  });
+
+  const shownUtc = (ms: number) => {
+    const parts = formatter.formatToParts(new Date(ms));
+    const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "00";
+    return Date.parse(`${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}Z`);
+  };
+
+  let ms = utcGuess;
+  for (let i = 0; i < 3; i++) {
+    const delta = Date.parse(`${wanted}Z`) - shownUtc(ms);
+    if (delta === 0) break;
+    ms += delta;
+  }
+  return new Date(ms).toISOString();
+}
+
 export function nextScheduledMatch(matches: Match[]): Match | null {
   const list = matches
     .filter((m) => m.status === "scheduled")
