@@ -8,6 +8,7 @@ import { downloadTableauSeasonWorkbook } from "@/lib/tableauExport";
 import { computeSeasonImpact, computeSeasonMinutesByKey, SeasonImpact } from "@/lib/impactScore";
 import { computeAttackingPressByKey } from "@/lib/attackingPress";
 import { computeTeamSeasonTrend } from "@/lib/advancedMetrics";
+import { uniqueTrendLabels } from "@/lib/trendLabel";
 import { matchIdsForTypes } from "@/lib/matchFilter";
 import { attributeMatchEvents } from "@/lib/eventAttribution";
 import { formatRate, RateMode, rateOf } from "@/lib/rates";
@@ -255,20 +256,28 @@ export default function SeasonPage() {
     players,
   ]);
 
-  const teamTrend = useMemo<TrendPoint[]>(
-    () =>
-      computeTeamSeasonTrend(filteredEvents, filteredMatches).map((m) => ({
-        label: m.opponent.slice(0, 10),
-        score: m.score,
-        goals: m.goals,
-        assists: m.assists,
-        keyPasses: m.keyPasses,
-        tackles: m.tackles,
-        losses: m.losses,
-        matchesPlayed: m.matchesPlayed,
-      })),
-    [filteredEvents, filteredMatches]
-  );
+  const teamTrend = useMemo<TrendPoint[]>(() => {
+    const rows = computeTeamSeasonTrend(filteredEvents, filteredMatches);
+    const labels = uniqueTrendLabels(
+      rows.map((m) => ({
+        id: m.matchId,
+        opponent: m.opponent,
+        matchType: filteredMatches.find((x) => x.id === m.matchId)?.match_type,
+        matchDate: m.matchDate,
+      }))
+    );
+    return rows.map((m) => ({
+      id: m.matchId,
+      label: labels.get(m.matchId) ?? m.opponent,
+      score: m.score,
+      goals: m.goals,
+      assists: m.assists,
+      keyPasses: m.keyPasses,
+      tackles: m.tackles,
+      losses: m.losses,
+      matchesPlayed: m.matchesPlayed,
+    }));
+  }, [filteredEvents, filteredMatches]);
 
   const trendSeries = useMemo(() => {
     const meta = SORT_META[sortKey];

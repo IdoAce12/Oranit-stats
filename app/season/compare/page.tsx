@@ -32,7 +32,7 @@ import {
   MetricKey,
   type CompareSlotKey,
 } from "@/lib/trendMetrics";
-import { MATCH_TYPE_LABELS, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "@/lib/types";
+import { uniqueTrendLabels } from "@/lib/trendLabel";
 
 const LOAD_TIMEOUT_MS = 12000;
 
@@ -275,22 +275,39 @@ function ComparePageInner() {
   }, [present, statsEvents, players, filteredMatches, squad]);
 
   const compareTrend = useMemo<TrendPoint[]>(() => {
-    type Acc = { label: string; date: string } & Partial<Record<CompareSlotKey, number>>;
+    type Acc = {
+      id: string;
+      opponent: string;
+      matchType: MatchType;
+      date: string;
+    } & Partial<Record<CompareSlotKey, number>>;
     const byMatch = new Map<string, Acc>();
     for (const p of present) {
       for (const l of linesByKey.get(p.key) ?? []) {
         const cur = byMatch.get(l.matchId) ?? {
-          label: l.opponent.slice(0, 10),
+          id: l.matchId,
+          opponent: l.opponent,
+          matchType: filteredMatches.find((m) => m.id === l.matchId)?.match_type ?? "league",
           date: l.matchDate,
         };
         cur[p.slot] = lineMetric(l, compareMetric);
         byMatch.set(l.matchId, cur);
       }
     }
-    return Array.from(byMatch.values())
-      .sort((x, y) => (x.date || "").localeCompare(y.date || ""))
-      .map(({ date: _date, ...p }) => p);
-  }, [present, linesByKey, compareMetric]);
+    const list = Array.from(byMatch.values()).sort((x, y) => (x.date || "").localeCompare(y.date || ""));
+    const labels = uniqueTrendLabels(
+      list.map((x) => ({
+        id: x.id,
+        opponent: x.opponent,
+        matchType: x.matchType,
+        matchDate: x.date,
+      }))
+    );
+    return list.map(({ date: _date, opponent, matchType: _type, ...p }) => ({
+      ...p,
+      label: labels.get(p.id) ?? opponent,
+    }));
+  }, [present, linesByKey, compareMetric, filteredMatches]);
 
   const compareSeries = useMemo(
     () =>

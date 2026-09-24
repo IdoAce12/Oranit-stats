@@ -19,7 +19,6 @@ export function LeagueTable({ rows }: { rows: IfaStandingRow[] }) {
               <th>נצ׳</th>
               <th>ת׳</th>
               <th>הפ׳</th>
-              <th>שע׳</th>
               <th>נק׳</th>
             </tr>
           </thead>
@@ -32,7 +31,6 @@ export function LeagueTable({ rows }: { rows: IfaStandingRow[] }) {
                 <td className="tabular">{r.won}</td>
                 <td className="tabular">{r.drawn}</td>
                 <td className="tabular">{r.lost}</td>
-                <td className="tabular whitespace-nowrap">{r.goals}</td>
                 <td className="tabular font-extrabold">{r.points}</td>
               </tr>
             ))}

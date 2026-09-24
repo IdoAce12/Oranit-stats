@@ -6,6 +6,7 @@ import { IFA_TEAM_URL } from "@/lib/ifa/config";
 import type { IfaStandingRow } from "@/lib/ifa/parse";
 import { AppHeader } from "../components/AppHeader";
 import { LeagueTable } from "../components/LeagueTable";
+import { SeasonKingsBoard } from "../components/SeasonKings";
 import { PageSkeleton } from "../components/Skeleton";
 
 export default function TablePage() {
@@ -74,6 +75,8 @@ export default function TablePage() {
       )}
 
       {!loading && <LeagueTable rows={standings} />}
+
+      {!loading && <SeasonKingsBoard />}
 
       <p className="mt-3 text-[11px] text-[var(--muted-2)]">
         {error

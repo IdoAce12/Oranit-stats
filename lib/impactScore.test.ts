@@ -90,6 +90,21 @@ describe("computeSeasonImpact", () => {
     expect(row.perMatch).toBeCloseTo(3);
   });
 
+  it("מפזר חילוצים לפי אזור כמו איבודים", () => {
+    const squad = [makeSquadPlayer({ id: "sq1", shirt_number: 6, name: "קשר" })];
+    const players = [makePlayer({ id: "p1", squad_player_id: "sq1" })];
+    const events = [
+      action("p1", "tackle", { zone: "def" }),
+      action("p1", "tackle", { zone: "mid" }),
+      action("p1", "tackle", { zone: "att" }),
+    ];
+    const row = computeSeasonImpact(events, players, squad)[0];
+    expect(row.tackles).toBe(3);
+    expect(row.defTackles).toBe(1);
+    expect(row.midTackles).toBe(1);
+    expect(row.attTackles).toBe(1);
+  });
+
   it("מאחד מחליף בלי squad_player_id עם שחקן הסגל לפי שם ומספר", () => {
     const squad = [makeSquadPlayer({ id: "sq1", shirt_number: 15, name: "מחליף" })];
     const players = [

@@ -481,10 +481,10 @@ table tbody tr:nth-child(even) td {
 .league-table .team-name {
   text-align: right;
   font-weight: 700;
-  width: 42%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 58%;
+  white-space: normal;
+  line-height: 1.2;
+  overflow: visible;
 }
 
 .league-table tbody tr.is-us td {
@@ -494,6 +494,243 @@ table tbody tr:nth-child(even) td {
 
 .pb-nav {
   padding-bottom: 1.5rem;
+}
+
+.cal-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cal-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.cal-month-nav {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cal-month-label {
+  min-width: 7.5rem;
+  text-align: center;
+}
+
+.cal-month-label p {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.cal-month-label span {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.cal-arrow {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.cal-add {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cal-add:disabled {
+  opacity: 0.4;
+}
+
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 6px 2px;
+}
+
+.cal-dow {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  padding-bottom: 4px;
+}
+
+.cal-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+  color: var(--text);
+  min-width: 0;
+}
+
+.cal-cell.is-empty {
+  visibility: hidden;
+}
+
+.cal-cell.is-today:not(.is-selected) {
+  background: var(--panel);
+}
+
+.cal-cell.is-selected {
+  background: var(--panel-strong);
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+.cal-num {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.crest-img {
+  border-radius: 999px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.crest-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+  border: 1px solid var(--border);
+  font-weight: 800;
+  color: var(--accent);
+}
+
+.cal-day-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cal-peek {
+  border-radius: 24px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+  padding: 18px 16px 16px;
+  text-align: center;
+}
+
+.cal-peek-empty {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.cal-peek-when {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.cal-peek-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.cal-peek-teams {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: start;
+  gap: 8px;
+}
+
+.cal-peek-club {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.cal-peek-club span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cal-peek-vs {
+  padding-top: 18px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--muted);
+}
+
+.cal-peek-score {
+  margin-top: 10px;
+  font-size: 1.4rem;
+  font-weight: 900;
+}
+
+.king-card {
+  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel-strong), var(--panel));
+  padding: 12px 12px 11px;
+}
+
+.king-card.is-king {
+  border-color: rgba(232, 201, 160, 0.45);
+  box-shadow: 0 0 0 1px rgba(232, 201, 160, 0.2);
+}
+
+.king-title {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.king-place {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.king-value {
+  margin-top: 2px;
+  font-size: 1.15rem;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+
+.king-value span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.king-leader,
+.king-empty {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+[data-theme="light"] .king-card.is-king {
+  border-color: rgba(13, 148, 136, 0.45);
+  box-shadow: 0 0 0 1px rgba(13, 148, 136, 0.15);
 }
 
 .print-only {

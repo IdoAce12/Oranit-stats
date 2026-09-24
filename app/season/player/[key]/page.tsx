@@ -7,12 +7,13 @@ import { loadSeasonBundle } from "@/lib/db";
 import {
   computePlayerSeasonMatches,
   computeSeasonImpact,
+  computeSeasonMinutesByKey,
   explainImpact,
   type SeasonImpact,
 } from "@/lib/impactScore";
 import { findRowByPlayerKey, playerMatchesKey } from "@/lib/playerKey";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
-import { MATCH_TYPE_LABELS, Match, MatchEvent, Player, SquadPlayer } from "@/lib/types";
+import { MATCH_TYPE_LABELS, Match, MatchEvent, Player, SquadPlayer, Substitution } from "@/lib/types";
 import { AppHeader } from "../../../components/AppHeader";
 import { PageSkeleton } from "../../../components/Skeleton";
 import { RadarProfile } from "../../../components/RadarProfile";
@@ -23,6 +24,7 @@ import { buildRadarData, roundMetric } from "@/lib/advancedMetrics";
 import { describeRadarAxis, radarAxisFromLabel } from "@/lib/radarExplain";
 import { matchIdsForTypes, OFFICIAL_MATCH_TYPES } from "@/lib/matchFilter";
 import { withTimeout } from "@/lib/withTimeout";
+import { uniqueTrendLabels } from "@/lib/trendLabel";
 import { METRIC_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
 
 const PLAYER_TREND_METRICS: MetricKey[] = [
@@ -55,6 +57,9 @@ function emptySeasonRow(base: SeasonImpact): SeasonImpact {
     aerialLost: 0,
     groundWon: 0,
     groundLost: 0,
+    defTackles: 0,
+    midTackles: 0,
+    attTackles: 0,
     perMatch: 0,
   };
 }
@@ -62,12 +67,13 @@ function emptySeasonRow(base: SeasonImpact): SeasonImpact {
 export default function SeasonPlayerPage() {
   const params = useParams<{ key: string }>();
   const playerKey = decodeURIComponent(params.key ?? "");
-  const { displayName, isCoach } = useAuth();
+  const { isCoach } = useAuth();
 
   const [events, setEvents] = useState<MatchEvent[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [squad, setSquad] = useState<SquadPlayer[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [substitutions, setSubstitutions] = useState<Substitution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [trendMetric, setTrendMetric] = useState<MetricKey>("score");
@@ -86,6 +92,7 @@ export default function SeasonPlayerPage() {
         setPlayers(bundle.players);
         setSquad(bundle.squad);
         setMatches(bundle.matches);
+        setSubstitutions(bundle.substitutions);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "שגיאה"))
       .finally(() => setLoading(false));
@@ -107,6 +114,11 @@ export default function SeasonPlayerPage() {
     () => (allowedMatchIds ? players.filter((p) => allowedMatchIds.has(p.match_id)) : players),
     [players, allowedMatchIds]
   );
+  const filteredSubs = useMemo(
+    () =>
+      allowedMatchIds ? substitutions.filter((s) => allowedMatchIds.has(s.match_id)) : substitutions,
+    [substitutions, allowedMatchIds]
+  );
 
   const identityRow = useMemo(
     () => findRowByPlayerKey(computeSeasonImpact(events, players, squad), playerKey, players, squad),
@@ -123,6 +135,20 @@ export default function SeasonPlayerPage() {
     if (identityRow) return emptySeasonRow(identityRow);
     return null;
   }, [allRows, playerKey, players, squad, identityRow]);
+
+  const minutesByKey = useMemo(
+    () =>
+      computeSeasonMinutesByKey(
+        filteredPlayers,
+        filteredSubs,
+        filteredMatches,
+        filteredEvents,
+        squad
+      ),
+    [filteredPlayers, filteredSubs, filteredMatches, filteredEvents, squad]
+  );
+
+  const myMinutes = seasonRow ? (minutesByKey.get(seasonRow.key) ?? 0) : 0;
 
   const matchLines = useMemo(
     () =>
@@ -153,19 +179,27 @@ export default function SeasonPlayerPage() {
     [seasonRow, allRows]
   );
 
-  const trendData = useMemo<TrendPoint[]>(
-    () =>
-      [...matchLines].reverse().map((l) => ({
-        label: l.opponent.slice(0, 10),
-        score: roundMetric(l.score),
-        goals: l.goals,
-        assists: l.assists,
-        keyPasses: l.keyPasses,
-        tackles: l.tackles,
-        losses: l.losses,
-      })),
-    [matchLines]
-  );
+  const trendData = useMemo<TrendPoint[]>(() => {
+    const chronological = [...matchLines].reverse();
+    const labels = uniqueTrendLabels(
+      chronological.map((l) => ({
+        id: l.matchId,
+        opponent: l.opponent,
+        matchType: matchTypeById.get(l.matchId),
+        matchDate: l.matchDate,
+      }))
+    );
+    return chronological.map((l) => ({
+      id: l.matchId,
+      label: labels.get(l.matchId) ?? l.opponent,
+      score: roundMetric(l.score),
+      goals: l.goals,
+      assists: l.assists,
+      keyPasses: l.keyPasses,
+      tackles: l.tackles,
+      losses: l.losses,
+    }));
+  }, [matchLines, matchTypeById]);
 
   const trendSeries = useMemo(
     () => [
@@ -211,11 +245,6 @@ export default function SeasonPlayerPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-4 page-shell pb-nav">
-      {!isCoach && (
-        <p className="mb-2 text-center font-[family-name:var(--font-frank)] text-3xl font-bold leading-tight">
-          שלום, {displayName}
-        </p>
-      )}
       <AppHeader
         title={seasonRow.label}
         subtitle="הנתונים שלי"
@@ -295,6 +324,7 @@ export default function SeasonPlayerPage() {
       <section className="mb-4 grid grid-cols-3 gap-2 sm:grid-cols-4">
         <MiniStat label="שערים" value={seasonRow.goals} avg={avg(seasonRow.goals)} tone="accent" />
         <MiniStat label="בישולים" value={seasonRow.assists} avg={avg(seasonRow.assists)} tone="info" />
+        <MiniStat label="דק׳ משחק" value={Math.round(myMinutes)} avg={avg(myMinutes)} />
         <MiniStat label="מס״מ" value={seasonRow.keyPasses} avg={avg(seasonRow.keyPasses)} />
         <MiniStat label="חילוצים" value={seasonRow.tackles} avg={avg(seasonRow.tackles)} />
         <MiniStat label="איבודים" value={seasonRow.lossesTotal} avg={avg(seasonRow.lossesTotal)} />
@@ -333,6 +363,24 @@ export default function SeasonPlayerPage() {
           </div>
           <div>
             <div className="tabular text-xl font-black">{seasonRow.attLosses}</div>
+            <div className="text-[var(--muted-2)]">התקפה</div>
+          </div>
+        </div>
+      </section>
+
+      <section className="card mb-4 p-3">
+        <p className="label mb-2">פיזור חילוצים</p>
+        <div className="grid grid-cols-3 gap-2 text-center text-sm">
+          <div>
+            <div className="tabular text-xl font-black">{seasonRow.defTackles}</div>
+            <div className="text-[var(--muted-2)]">הגנה</div>
+          </div>
+          <div>
+            <div className="tabular text-xl font-black">{seasonRow.midTackles}</div>
+            <div className="text-[var(--muted-2)]">אמצע</div>
+          </div>
+          <div>
+            <div className="tabular text-xl font-black">{seasonRow.attTackles}</div>
             <div className="text-[var(--muted-2)]">התקפה</div>
           </div>
         </div>

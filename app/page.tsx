@@ -152,6 +152,9 @@ export default function HomePage() {
                 <p className="home-kicker">המשחק הבא</p>
                 <h2 className="match-title">מול {next.opponent}</h2>
                 <p className="mt-1 text-[13px] text-white/70">{when}</p>
+                {next.notes?.trim() ? (
+                  <p className="mt-0.5 text-[13px] text-white/70">{next.notes.trim()}</p>
+                ) : null}
               </div>
               <span className="chip border-white/10 bg-white/5 text-[11px] text-white/70">
                 {MATCH_TYPE_LABELS[next.match_type ?? "league"]}
@@ -236,6 +239,7 @@ export default function HomePage() {
                             })} · שעה טרם נקבעה`}
                         {" · "}
                         {MATCH_TYPE_LABELS[m.match_type ?? "league"]}
+                        {m.notes?.trim() ? ` · ${m.notes.trim()}` : ""}
                       </p>
                     </div>
                     <span className="chip border-white/10 text-[var(--muted)]">

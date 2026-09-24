@@ -257,6 +257,9 @@ export interface SeasonImpact {
   aerialLost: number;
   groundWon: number;
   groundLost: number;
+  defTackles: number;
+  midTackles: number;
+  attTackles: number;
   perMatch: number;
 }
 
@@ -320,6 +323,9 @@ export function computeSeasonImpact(
         aerialLost: 0,
         groundWon: 0,
         groundLost: 0,
+        defTackles: 0,
+        midTackles: 0,
+        attTackles: 0,
         perMatch: 0,
       });
     }
@@ -355,7 +361,12 @@ export function computeSeasonImpact(
     if (ev.action_type === "key_pass") entry.keyPasses += 1;
     if (ev.action_type === "goal") entry.goals += 1;
     if (ev.action_type === "assist") entry.assists += 1;
-    if (ev.action_type === "tackle") entry.tackles += 1;
+    if (ev.action_type === "tackle") {
+      entry.tackles += 1;
+      if (ev.zone === "def") entry.defTackles += 1;
+      if (ev.zone === "mid") entry.midTackles += 1;
+      if (ev.zone === "att") entry.attTackles += 1;
+    }
     if (ev.action_type === "ball_loss") {
       entry.lossesTotal += 1;
       if (ev.zone === "def") entry.defLosses += 1;
