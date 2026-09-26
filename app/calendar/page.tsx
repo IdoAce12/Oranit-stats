@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { listMatches } from "@/lib/db";
+import { deleteTraining, listMatches, listTrainings, upsertTraining } from "@/lib/db";
 import { requestIfaSync } from "@/lib/ifa/client";
 import type { IfaFixture, IfaStandingRow } from "@/lib/ifa/parse";
 import { buildCalendarEvents, nextCalendarDate } from "@/lib/calendarEvents";
 import { israelToday, splitMatches } from "@/lib/fixtures";
 import { nextOfficialFixture } from "@/lib/homeNext";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import type { Training } from "@/lib/trainings";
 import { Match } from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
 import { MatchCalendar } from "../components/MatchCalendar";
@@ -21,6 +22,7 @@ export default function CalendarPage() {
   const [standings, setStandings] = useState<IfaStandingRow[]>([]);
   const [ifaFixtures, setIfaFixtures] = useState<IfaFixture[]>([]);
   const [dismissedKeys, setDismissedKeys] = useState<string[]>([]);
+  const [trainings, setTrainings] = useState<Training[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +36,12 @@ export default function CalendarPage() {
       try {
         const rows = await listMatches();
         if (!cancelled) setMatches(rows);
+        try {
+          const sessions = await listTrainings();
+          if (!cancelled) setTrainings(sessions);
+        } catch {
+          if (!cancelled) setTrainings([]);
+        }
         const result = await requestIfaSync(true);
         if (cancelled) return;
         if (result) {
@@ -58,16 +66,16 @@ export default function CalendarPage() {
   }, []);
 
   const { live } = useMemo(() => splitMatches(matches), [matches]);
-  const events = useMemo(
-    () => buildCalendarEvents(matches, ifaFixtures, dismissedKeys),
-    [matches, ifaFixtures, dismissedKeys]
-  );
   const today = israelToday();
+  const events = useMemo(
+    () => buildCalendarEvents(matches, ifaFixtures, dismissedKeys, today, trainings),
+    [matches, ifaFixtures, dismissedKeys, today, trainings]
+  );
   const focusDate = nextCalendarDate(events, today, nextOfficialFixture(ifaFixtures, today)?.date) ?? today;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell pb-nav">
-      <AppHeader title="לוח משחקים" subtitle="החודש, עם כל המשחקים על התאריכים" />
+      <AppHeader title="לוח משחקים" subtitle="משחקים ואימונים על התאריכים" />
 
       {loading && <PageSkeleton rows={4} />}
       {error && <p className="text-[var(--danger)]">{error}</p>}
@@ -94,7 +102,20 @@ export default function CalendarPage() {
             </section>
           )}
 
-          <MatchCalendar events={events} standings={standings} isCoach={isCoach} focusDate={focusDate} />
+          <MatchCalendar
+            events={events}
+            standings={standings}
+            isCoach={isCoach}
+            focusDate={focusDate}
+            onSaveTraining={async (row) => {
+              const next = await upsertTraining(row);
+              setTrainings(next);
+            }}
+            onDeleteTraining={async (id) => {
+              const next = await deleteTraining(id);
+              setTrainings(next);
+            }}
+          />
         </>
       )}
     </main>

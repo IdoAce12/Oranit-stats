@@ -53,6 +53,27 @@ describe("buildCalendarEvents", () => {
     expect(events[0].opponent).toBe("הפועל כפר קאסם");
   });
 
+  it("מוסיף אימון ללוח בלי לבלבל עם משחק", () => {
+    const events = buildCalendarEvents(
+      [
+        makeMatch({
+          id: "m1",
+          opponent: "מכבי השרון נתניה",
+          match_date: "2026-09-28",
+          status: "scheduled",
+        }),
+      ],
+      [],
+      [],
+      "2026-09-26",
+      [{ id: "tr1", date: "2026-09-27", time: "20:00", venue: "אורנית" }]
+    );
+    const training = events.find((e) => e.kind === "training");
+    expect(training?.date).toBe("2026-09-27");
+    expect(training?.venue).toBe("אורנית");
+    expect(events.find((e) => e.kind === "match")?.opponent).toContain("השרון");
+  });
+
   it("מציג השרון כמתוכנן גם אם נשאר משחק הושלם מול אותה יריבה", () => {
     const hasharon: IfaFixture = {
       date: "2026-09-28",

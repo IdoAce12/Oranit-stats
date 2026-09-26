@@ -1,10 +1,14 @@
-import { matchKickoff, israelToday } from "./fixtures";
+import { matchKickoff, israelToday, toIsraelKickoffIso } from "./fixtures";
 import { activeDismissedSet, findExistingIfaMatch, ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
 import { ifaMatchKey, namesMatch, type IfaFixture } from "./ifa/parse";
+import type { Training } from "./trainings";
 import { MATCH_TYPE_LABELS, Match, MatchStatus, MatchType } from "./types";
+
+export type CalendarEventKind = "match" | "training";
 
 export type CalendarEvent = {
   key: string;
+  kind: CalendarEventKind;
   date: string;
   opponent: string;
   home: boolean | null;
@@ -13,6 +17,7 @@ export type CalendarEvent = {
   matchType: MatchType;
   status: MatchStatus;
   matchId: string | null;
+  trainingId: string | null;
   venue: string;
   notes: string;
   score: string | null;
@@ -50,6 +55,8 @@ function fromMatch(match: Match, fixture: IfaFixture | null): CalendarEvent {
     venue,
     notes,
     score: fixture?.score ?? null,
+    kind: "match",
+    trainingId: null,
   };
 }
 
@@ -68,6 +75,28 @@ function fromFixture(fixture: IfaFixture): CalendarEvent {
     venue: fixture.venue,
     notes: ifaVenueNote(fixture),
     score: fixture.score,
+    kind: "match",
+    trainingId: null,
+  };
+}
+
+function fromTraining(training: Training): CalendarEvent {
+  const kickoffAt = training.time ? toIsraelKickoffIso(training.date, training.time) : null;
+  return {
+    key: `training:${training.id}`,
+    kind: "training",
+    date: training.date,
+    opponent: "אימון",
+    home: true,
+    time: training.time,
+    kickoffAt,
+    matchType: "friendly",
+    status: "scheduled",
+    matchId: null,
+    trainingId: training.id,
+    venue: training.venue,
+    notes: training.venue,
+    score: null,
   };
 }
 
@@ -76,7 +105,8 @@ export function buildCalendarEvents(
   matches: Match[],
   fixtures: IfaFixture[],
   dismissedKeys: Iterable<string> = [],
-  today = israelToday()
+  today = israelToday(),
+  trainings: Training[] = []
 ): CalendarEvent[] {
   const claimed = new Set<string>();
   const dismissed = activeDismissedSet(dismissedKeys, today);
@@ -100,10 +130,18 @@ export function buildCalendarEvents(
     events.push(fromFixture(fixture));
   }
 
+  for (const training of trainings) {
+    events.push(fromTraining(training));
+  }
+
   return events.sort((a, b) => {
     const ak = a.kickoffAt ?? `${a.date}T12:00:00`;
     const bk = b.kickoffAt ?? `${b.date}T12:00:00`;
-    return ak.localeCompare(bk);
+    const byTime = ak.localeCompare(bk);
+    if (byTime !== 0) return byTime;
+    if (a.kind === "training" && b.kind !== "training") return 1;
+    if (b.kind === "training" && a.kind !== "training") return -1;
+    return 0;
   });
 }
 
@@ -136,6 +174,9 @@ export function nextCalendarDate(
 }
 
 export function typeLine(event: CalendarEvent): string {
+  if (event.kind === "training") {
+    return ["אימון", event.venue].filter(Boolean).join(" · ");
+  }
   const type = MATCH_TYPE_LABELS[event.matchType];
   const side = event.home == null ? "" : event.home ? "בית" : "חוץ";
   return [type, side, event.venue].filter(Boolean).join(" · ");
@@ -158,7 +199,7 @@ function icsStamp(d: Date): string {
 
 /** קובץ יומן לטלפון — משחק אחד. */
 export function calendarEventIcs(event: CalendarEvent): string {
-  const summary = `הפועל אורנית נגד ${event.opponent}`;
+  const summary = event.kind === "training" ? `אימון הפועל אורנית` : `הפועל אורנית נגד ${event.opponent}`;
   const desc = [typeLine(event), event.notes].filter(Boolean).join("\\n");
   const stamp = icsStamp(new Date());
   const uid = `${event.key.replace(/[^a-zA-Z0-9-]/g, "")}@oranit-stats`;

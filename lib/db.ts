@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabaseClient";
 import { matchIfaKey, type IfaFixture, type IfaStandingRow } from "./ifa/parse";
+import { parseTrainings, type Training } from "./trainings";
 import { Half, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "./types";
 
 export class SupabaseNotConfiguredError extends Error {
@@ -212,6 +213,43 @@ export async function addDismissedIfaKey(key: string): Promise<void> {
     fetched_at: new Date().toISOString(),
   });
   if (error) throw error;
+}
+
+const IFA_TRAININGS_ID = "trainings";
+
+export async function listTrainings(): Promise<Training[]> {
+  const supabase = requireClient();
+  const { data, error } = await supabase
+    .from("ifa_cache")
+    .select("fixtures")
+    .eq("id", IFA_TRAININGS_ID)
+    .maybeSingle();
+  if (error) throw error;
+  return parseTrainings(data?.fixtures);
+}
+
+export async function saveTrainings(rows: Training[]): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("ifa_cache").upsert({
+    id: IFA_TRAININGS_ID,
+    standings: [],
+    fixtures: parseTrainings(rows),
+    fetched_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+export async function upsertTraining(row: Training): Promise<Training[]> {
+  const list = await listTrainings();
+  const next = parseTrainings([...list.filter((t) => t.id !== row.id), row]);
+  await saveTrainings(next);
+  return next;
+}
+
+export async function deleteTraining(id: string): Promise<Training[]> {
+  const next = (await listTrainings()).filter((t) => t.id !== id);
+  await saveTrainings(next);
+  return next;
 }
 
 export async function startMatch(id: string): Promise<void> {
