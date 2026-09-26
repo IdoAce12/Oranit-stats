@@ -19,7 +19,7 @@ export interface IfaMatchUpdate {
   opponent: string;
   match_date: string;
   kickoff_at: string | null;
-  ifa_key: string;
+  ifa_key: string | null;
   notes?: string;
 }
 
@@ -105,7 +105,29 @@ export function planFixtureSync(
     }
     const found = findExistingIfaMatch(existing, fixture);
     if (found) {
-      if (claimed.has(found.id) || found.status === "live" || found.status === "finished") {
+      if (found.status === "finished") {
+        if (found.ifa_key === key) {
+          updates.push({
+            id: found.id,
+            opponent: found.opponent,
+            match_date: found.match_date,
+            kickoff_at: found.kickoff_at ?? null,
+            ifa_key: null,
+          });
+        }
+        inserts.push({
+          opponent: fixture.opponent,
+          match_date: fixture.date,
+          our_team_name: IFA_OUR_NAME,
+          match_type: "league",
+          status: "scheduled",
+          kickoff_at: kickoffFromIfa(fixture),
+          ifa_key: key,
+          notes: ifaVenueNote(fixture),
+        });
+        continue;
+      }
+      if (claimed.has(found.id) || found.status === "live") {
         skipped += 1;
         continue;
       }

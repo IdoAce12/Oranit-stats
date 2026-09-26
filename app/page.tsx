@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { deleteMatch, getPlayers, listMatches, startMatch } from "@/lib/db";
+import { createMatch, deleteMatch, getPlayers, listMatches, startMatch } from "@/lib/db";
 import { requestIfaSync } from "@/lib/ifa/client";
-import { matchKickoff, nextScheduledMatch, splitMatches } from "@/lib/fixtures";
+import type { IfaFixture } from "@/lib/ifa/parse";
+import { matchKickoff, splitMatches } from "@/lib/fixtures";
+import { homeLiveMatch, homeNextMatch, isPendingIfaMatch } from "@/lib/homeNext";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MATCH_STATUS_LABELS, MATCH_TYPE_LABELS, Match } from "@/lib/types";
 import { ConfigBanner } from "./components/ConfigBanner";
@@ -19,6 +21,7 @@ export default function HomePage() {
   const { user, loading: authLoading, isCoach, displayName, logout } = useAuth();
   const router = useRouter();
   const [matches, setMatches] = useState<Match[]>([]);
+  const [fixtures, setFixtures] = useState<IfaFixture[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -34,7 +37,8 @@ export default function HomePage() {
     const run = async () => {
       try {
         const rows = await listMatches();
-        const result = await requestIfaSync();
+        const result = await requestIfaSync(true);
+        if (!cancelled && result?.fixtures) setFixtures(result.fixtures);
         const needReload = Boolean(result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0));
         const nextRows = needReload ? await listMatches() : rows;
         if (!cancelled) setMatches(nextRows);
@@ -50,21 +54,34 @@ export default function HomePage() {
     };
   }, [authLoading, user]);
 
-  const next = useMemo(() => nextScheduledMatch(matches), [matches]);
+  const next = useMemo(() => homeNextMatch(matches, fixtures), [matches, fixtures]);
   const { scheduled, live, finished } = useMemo(() => splitMatches(matches), [matches]);
-  const liveNow = live[0] ?? null;
+  const liveNow = useMemo(() => homeLiveMatch(matches, fixtures), [matches, fixtures]);
 
   const beginScheduled = async (m: Match) => {
     setBusyId(m.id);
     setError(null);
     try {
-      const players = await getPlayers(m.id);
+      let match = m;
+      if (isPendingIfaMatch(m)) {
+        match = await createMatch({
+          opponent: m.opponent,
+          match_date: m.match_date,
+          our_team_name: m.our_team_name,
+          match_type: m.match_type ?? "league",
+          status: "scheduled",
+          kickoff_at: m.kickoff_at ?? null,
+          ifa_key: m.ifa_key ?? null,
+          notes: m.notes,
+        });
+      }
+      const players = await getPlayers(match.id);
       if (players.length === 0) {
-        router.push(`/setup?matchId=${m.id}`);
+        router.push(`/setup?matchId=${match.id}`);
         return;
       }
-      await startMatch(m.id);
-      router.push(`/live/${m.id}`);
+      await startMatch(match.id);
+      router.push(`/live/${match.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה");
       setBusyId(null);
@@ -77,7 +94,8 @@ export default function HomePage() {
     try {
       await deleteMatch(m.id);
       setMatches((prev) => prev.filter((x) => x.id !== m.id));
-      const result = await requestIfaSync();
+      const result = await requestIfaSync(true);
+      if (result?.fixtures) setFixtures(result.fixtures);
       if (result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0)) {
         const rows = await listMatches();
         setMatches(rows);
@@ -189,14 +207,16 @@ export default function HomePage() {
                 >
                   {busyId === next.id ? "..." : "התחל משחק"}
                 </button>
-                <button
-                  type="button"
-                  disabled={busyId === next.id}
-                  onClick={() => void cancelScheduled(next)}
-                  className="btn btn-ghost flex-1 py-3 text-sm text-white/80"
-                >
-                  מחק
-                </button>
+                {!isPendingIfaMatch(next) && (
+                  <button
+                    type="button"
+                    disabled={busyId === next.id}
+                    onClick={() => void cancelScheduled(next)}
+                    className="btn btn-ghost flex-1 py-3 text-sm text-white/80"
+                  >
+                    מחק
+                  </button>
+                )}
               </div>
             )}
           </section>

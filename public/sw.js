@@ -1,7 +1,7 @@
 // Service worker פשוט: מטמון של מעטפת האפליקציה כדי שתיפתח גם בלי רשת.
 // שים לב: הנתונים עצמם נשמרים ב-localStorage (תור אירועים) ומסתנכרנים ל-Supabase.
 
-const CACHE = "scout-shell-v2";
+const CACHE = "scout-shell-v3";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {

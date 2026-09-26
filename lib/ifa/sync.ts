@@ -41,16 +41,6 @@ async function fetchIfaHtml(url: string): Promise<string> {
 
 async function applyPlan(plan: IfaSyncPlan, dismissedKeys: Iterable<string> = []): Promise<void> {
   const dismissed = activeDismissedSet(dismissedKeys, israelToday());
-  for (const row of plan.inserts) {
-    if (dismissed.has(row.ifa_key)) continue;
-    try {
-      await createMatch(row);
-    } catch (e) {
-      const msg = errorMessage(e);
-      if (/duplicate|unique|ifa_key/i.test(msg)) continue;
-      throw e;
-    }
-  }
   for (const row of plan.updates) {
     try {
       await updateMatch(row.id, {
@@ -63,6 +53,16 @@ async function applyPlan(plan: IfaSyncPlan, dismissedKeys: Iterable<string> = []
     } catch (e) {
       const msg = errorMessage(e);
       if (/0 rows|not found|could not find|No rows/i.test(msg)) continue;
+      throw e;
+    }
+  }
+  for (const row of plan.inserts) {
+    if (dismissed.has(row.ifa_key)) continue;
+    try {
+      await createMatch(row);
+    } catch (e) {
+      const msg = errorMessage(e);
+      if (/duplicate|unique|ifa_key/i.test(msg)) continue;
       throw e;
     }
   }

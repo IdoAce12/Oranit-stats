@@ -109,6 +109,20 @@ describe("planFixtureSync", () => {
     expect(plan.inserts.map((row) => row.opponent)).toContain("מכבי השרון נתניה");
   });
 
+  it("יוצר מחדש משחק מתוכנן אם נשאר רק הושלם מול אותה יריבה", () => {
+    const done = makeMatch({
+      id: "old",
+      status: "finished",
+      opponent: "מכבי השרון נתניה",
+      match_date: "2026-09-28",
+      ifa_key: ifaMatchKey("2026-09-28", "מכבי השרון נתניה"),
+    });
+    const plan = planFixtureSync([done], [fixture()], [], "2026-09-26");
+    expect(plan.inserts).toHaveLength(1);
+    expect(plan.inserts[0].opponent).toBe("מכבי השרון נתניה");
+    expect(plan.updates[0]?.ifa_key).toBeNull();
+  });
+
   it("מזהה דחייה לפי יריבה בלי ליצור כפילות", () => {
     const existing = makeMatch({
       id: "s1",
