@@ -601,8 +601,8 @@ table tbody tr:nth-child(even) td {
 
 .crest-img {
   border-radius: 999px;
-  object-fit: contain;
-  background: rgba(255, 255, 255, 0.08);
+  object-fit: cover;
+  background: transparent;
 }
 
 .crest-fallback {
