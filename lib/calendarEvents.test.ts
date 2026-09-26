@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildCalendarEvents, eventsOnDate, nextCalendarDate } from "./calendarEvents";
 import type { IfaFixture } from "./ifa/parse";
+import { ifaMatchKey } from "./ifa/parse";
 import { makeMatch } from "./testHelpers";
 
 const leagueGame: IfaFixture = {
@@ -36,6 +37,12 @@ describe("buildCalendarEvents", () => {
     expect(events).toHaveLength(1);
     expect(events[0].matchId).toBeNull();
     expect(events[0].opponent).toBe("הפועל כפר קאסם");
+  });
+
+  it("מדלג על משחק התאחדות שנמחק ידנית", () => {
+    const key = ifaMatchKey(leagueGame.date, leagueGame.opponent);
+    const events = buildCalendarEvents([], [leagueGame], [key]);
+    expect(events).toHaveLength(0);
   });
 });
 

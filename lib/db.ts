@@ -1,5 +1,5 @@
 import { getSupabase } from "./supabaseClient";
-import type { IfaFixture, IfaStandingRow } from "./ifa/parse";
+import { matchIfaKey, type IfaFixture, type IfaStandingRow } from "./ifa/parse";
 import { Half, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "./types";
 
 export class SupabaseNotConfiguredError extends Error {
@@ -180,6 +180,40 @@ export async function saveIfaCache(input: {
   if (error) throw error;
 }
 
+const IFA_DISMISSED_ID = "dismissed";
+
+function parseDismissedKeys(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.filter((x): x is string => typeof x === "string" && x.trim().length > 0))];
+}
+
+/** משחקי התאחדות שנמחקו ידנית — לא חוזרים בסנכרון. */
+export async function listDismissedIfaKeys(): Promise<string[]> {
+  const supabase = requireClient();
+  const { data, error } = await supabase
+    .from("ifa_cache")
+    .select("fixtures")
+    .eq("id", IFA_DISMISSED_ID)
+    .maybeSingle();
+  if (error) throw error;
+  return parseDismissedKeys(data?.fixtures);
+}
+
+export async function addDismissedIfaKey(key: string): Promise<void> {
+  const k = key.trim();
+  if (!k) return;
+  const existing = await listDismissedIfaKeys();
+  if (existing.includes(k)) return;
+  const supabase = requireClient();
+  const { error } = await supabase.from("ifa_cache").upsert({
+    id: IFA_DISMISSED_ID,
+    standings: [],
+    fixtures: [...existing, k],
+    fetched_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
 export async function startMatch(id: string): Promise<void> {
   const supabase = requireClient();
   const { error } = await supabase.from("matches").update({ status: "live" }).eq("id", id);
@@ -188,6 +222,14 @@ export async function startMatch(id: string): Promise<void> {
 
 export async function deleteMatch(id: string): Promise<void> {
   const supabase = requireClient();
+  const match = await getMatch(id);
+  if (match) {
+    try {
+      await addDismissedIfaKey(matchIfaKey(match));
+    } catch {
+      /* בלי טבלת ifa_cache עדיין מוחקים */
+    }
+  }
   const { error } = await supabase.from("matches").delete().eq("id", id);
   if (error) throw error;
 }

@@ -71,11 +71,16 @@ export function findExistingIfaMatch(existing: Match[], fixture: IfaFixture): Ma
 }
 
 /** רק משחקים בלי תוצאה נכנסים ללוח. לייב/הושלם לא נדרסים. ידידות לא נמחקות. */
-export function planFixtureSync(existing: Match[], fixtures: IfaFixture[]): IfaSyncPlan {
+export function planFixtureSync(
+  existing: Match[],
+  fixtures: IfaFixture[],
+  dismissedKeys: Iterable<string> = []
+): IfaSyncPlan {
   const inserts: IfaMatchInsert[] = [];
   const updates: IfaMatchUpdate[] = [];
   let skipped = 0;
   const claimed = new Set<string>();
+  const dismissed = new Set(dismissedKeys);
 
   for (const fixture of fixtures) {
     if (fixture.score) {
@@ -83,6 +88,10 @@ export function planFixtureSync(existing: Match[], fixtures: IfaFixture[]): IfaS
       continue;
     }
     const key = ifaMatchKey(fixture.date, fixture.opponent);
+    if (dismissed.has(key)) {
+      skipped += 1;
+      continue;
+    }
     const found = findExistingIfaMatch(existing, fixture);
     if (found) {
       if (claimed.has(found.id) || found.status === "live" || found.status === "finished") {
@@ -154,5 +163,6 @@ export interface IfaSyncResult {
   updated: number;
   skipped: number;
   refreshed: boolean;
+  dismissedKeys: string[];
   error?: string;
 }

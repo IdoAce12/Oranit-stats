@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   ifaMatchKey,
   isOurTeam,
+  matchIfaKey,
   namesMatch,
   parseIfaDate,
   parseIfaGames,
@@ -111,6 +112,9 @@ describe("namesMatch", () => {
     expect(namesMatch("בית״ר טוברוק", 'בית"ר טוברוק')).toBe(true);
     expect(isOurTeam("הפועל אורנית ע. עידו אגוזי")).toBe(true);
     expect(ifaMatchKey("2026-09-28", "בני טירה")).toBe("2026-09-28|בני טירה");
+    expect(matchIfaKey({ match_date: "2026-09-28", opponent: "בני טירה" })).toBe(
+      "2026-09-28|בני טירה"
+    );
   });
 });
 

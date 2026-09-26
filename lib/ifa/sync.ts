@@ -1,4 +1,4 @@
-import { createMatch, getIfaCache, listMatches, saveIfaCache, updateMatch } from "../db";
+import { createMatch, getIfaCache, listDismissedIfaKeys, listMatches, saveIfaCache, updateMatch } from "../db";
 import { IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL } from "./config";
 import { parseIfaGames, parseIfaStandings, type IfaFixture, type IfaStandingRow } from "./parse";
 import {
@@ -38,7 +38,9 @@ async function fetchIfaHtml(url: string): Promise<string> {
 }
 
 async function applyPlan(plan: IfaSyncPlan): Promise<void> {
+  const dismissed = new Set(await listDismissedIfaKeys());
   for (const row of plan.inserts) {
+    if (dismissed.has(row.ifa_key)) continue;
     try {
       await createMatch(row);
     } catch (e) {
@@ -48,13 +50,19 @@ async function applyPlan(plan: IfaSyncPlan): Promise<void> {
     }
   }
   for (const row of plan.updates) {
-    await updateMatch(row.id, {
-      opponent: row.opponent,
-      match_date: row.match_date,
-      kickoff_at: row.kickoff_at,
-      ifa_key: row.ifa_key,
-      notes: row.notes,
-    });
+    try {
+      await updateMatch(row.id, {
+        opponent: row.opponent,
+        match_date: row.match_date,
+        kickoff_at: row.kickoff_at,
+        ifa_key: row.ifa_key,
+        notes: row.notes,
+      });
+    } catch (e) {
+      const msg = errorMessage(e);
+      if (/0 rows|not found|could not find|No rows/i.test(msg)) continue;
+      throw e;
+    }
   }
 }
 
@@ -70,6 +78,7 @@ function fromCache(
     updated: 0,
     skipped: 0,
     refreshed: false,
+    dismissedKeys: [],
     ...extra,
   };
 }
@@ -88,8 +97,17 @@ export async function runIfaSync(opts: { force?: boolean } = {}): Promise<IfaSyn
     }
   }
 
+  let dismissedKeys: string[] = [];
+  if (!schemaMissing) {
+    try {
+      dismissedKeys = await listDismissedIfaKeys();
+    } catch {
+      dismissedKeys = [];
+    }
+  }
+
   if (!schemaMissing && !opts.force && isIfaCacheFresh(cache?.fetched_at, Date.now(), IFA_STALE_MS)) {
-    return fromCache(cache);
+    return fromCache(cache, { dismissedKeys });
   }
 
   const migrationError = "חסר חיבור להתאחדות — הרץ את db/migration_v12.sql ב-Supabase SQL Editor";
@@ -102,39 +120,49 @@ export async function runIfaSync(opts: { force?: boolean } = {}): Promise<IfaSyn
     const fixtures = parseIfaGames(gamesHtml);
     const standings = parseIfaStandings(teamHtml);
     if (fixtures.length === 0 && standings.length === 0) {
-      return fromCache(cache, { error: schemaMissing ? migrationError : "לא הצלחנו לקרוא את אתר ההתאחדות" });
+      return fromCache(cache, {
+        dismissedKeys,
+        error: schemaMissing ? migrationError : "לא הצלחנו לקרוא את אתר ההתאחדות",
+      });
     }
 
     if (!schemaMissing) {
       const existing = await listMatches();
-      const plan = planFixtureSync(existing, fixtures);
+      try {
+        dismissedKeys = await listDismissedIfaKeys();
+      } catch {
+        /* keep previous */
+      }
+      const plan = planFixtureSync(existing, fixtures, dismissedKeys);
       try {
         await applyPlan(plan);
         const fetchedAt = new Date().toISOString();
         await saveIfaCache({ standings, fixtures, fetched_at: fetchedAt });
+        const inserted = plan.inserts.filter((row) => !dismissedKeys.includes(row.ifa_key)).length;
         return {
           standings,
           fixtures,
           fetchedAt,
-          inserted: plan.inserts.length,
+          inserted,
           updated: plan.updates.length,
           skipped: plan.skipped,
           refreshed: true,
+          dismissedKeys,
         };
       } catch (e) {
         const msg = errorMessage(e);
         if (isMissingIfaSchema(msg)) {
-          return fromCache(cache, { standings, fixtures, error: migrationError });
+          return fromCache(cache, { standings, fixtures, dismissedKeys, error: migrationError });
         }
         throw e;
       }
     }
 
-    return fromCache(cache, { standings, fixtures, error: migrationError });
+    return fromCache(cache, { standings, fixtures, dismissedKeys, error: migrationError });
   } catch (e) {
     const msg = errorMessage(e);
     console.error("ifa fetch", e);
-    if (cache) return fromCache(cache, { error: schemaMissing ? migrationError : msg });
-    return fromCache(null, { error: schemaMissing ? migrationError : msg });
+    if (cache) return fromCache(cache, { dismissedKeys, error: schemaMissing ? migrationError : msg });
+    return fromCache(null, { dismissedKeys, error: schemaMissing ? migrationError : msg });
   }
 }

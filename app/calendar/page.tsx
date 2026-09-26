@@ -19,6 +19,7 @@ export default function CalendarPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [standings, setStandings] = useState<IfaStandingRow[]>([]);
   const [ifaFixtures, setIfaFixtures] = useState<IfaFixture[]>([]);
+  const [dismissedKeys, setDismissedKeys] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +41,7 @@ export default function CalendarPage() {
       if (!result) return;
       setStandings(result.standings ?? []);
       setIfaFixtures(result.fixtures ?? []);
+      setDismissedKeys(result.dismissedKeys ?? []);
       if ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0) {
         void loadMatches();
       }
@@ -47,7 +49,10 @@ export default function CalendarPage() {
   }, []);
 
   const { live } = useMemo(() => splitMatches(matches), [matches]);
-  const events = useMemo(() => buildCalendarEvents(matches, ifaFixtures), [matches, ifaFixtures]);
+  const events = useMemo(
+    () => buildCalendarEvents(matches, ifaFixtures, dismissedKeys),
+    [matches, ifaFixtures, dismissedKeys]
+  );
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell pb-nav">

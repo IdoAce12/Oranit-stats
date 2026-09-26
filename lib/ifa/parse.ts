@@ -89,6 +89,15 @@ export function ifaMatchKey(date: string, opponent: string): string {
   return `${date}|${normalizeTeamName(opponent)}`;
 }
 
+export function matchIfaKey(match: {
+  ifa_key?: string | null;
+  match_date: string;
+  opponent: string;
+}): string {
+  const existing = match.ifa_key?.trim();
+  return existing || ifaMatchKey(match.match_date, match.opponent);
+}
+
 export function parseIfaGames(html: string): IfaFixture[] {
   const start = html.indexOf("רשימת המשחקים");
   const chunk = start >= 0 ? html.slice(start) : html;

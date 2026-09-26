@@ -85,6 +85,13 @@ describe("planFixtureSync", () => {
     expect(plan.inserts[0].notes).toBe("בית");
   });
 
+  it("לא מחזיר משחק שנמחק ידנית", () => {
+    const key = ifaMatchKey("2026-09-28", "מכבי השרון נתניה");
+    const plan = planFixtureSync([], [fixture()], [key]);
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.skipped).toBe(1);
+  });
+
   it("מזהה דחייה לפי יריבה בלי ליצור כפילות", () => {
     const existing = makeMatch({
       id: "s1",

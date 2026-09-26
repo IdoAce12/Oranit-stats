@@ -1,6 +1,6 @@
 import { matchKickoff } from "./fixtures";
 import { findExistingIfaMatch, ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
-import { namesMatch, type IfaFixture } from "./ifa/parse";
+import { ifaMatchKey, namesMatch, type IfaFixture } from "./ifa/parse";
 import { MATCH_TYPE_LABELS, Match, MatchStatus, MatchType } from "./types";
 
 export type CalendarEvent = {
@@ -72,8 +72,13 @@ function fromFixture(fixture: IfaFixture): CalendarEvent {
 }
 
 /** מאחד משחקים מהמסד עם לוח ההתאחדות, בלי כפילויות. */
-export function buildCalendarEvents(matches: Match[], fixtures: IfaFixture[]): CalendarEvent[] {
+export function buildCalendarEvents(
+  matches: Match[],
+  fixtures: IfaFixture[],
+  dismissedKeys: Iterable<string> = []
+): CalendarEvent[] {
   const claimed = new Set<string>();
+  const dismissed = new Set(dismissedKeys);
   const events: CalendarEvent[] = [];
 
   for (const match of matches) {
@@ -83,6 +88,8 @@ export function buildCalendarEvents(matches: Match[], fixtures: IfaFixture[]): C
   }
 
   for (const fixture of fixtures) {
+    const key = ifaMatchKey(fixture.date, fixture.opponent);
+    if (dismissed.has(key)) continue;
     if (claimed.has(`${fixture.date}|${fixture.opponent}`)) continue;
     if (findExistingIfaMatch(matches, fixture)) continue;
     events.push(fromFixture(fixture));
