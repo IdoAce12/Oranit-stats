@@ -223,7 +223,7 @@ export async function startMatch(id: string): Promise<void> {
 export async function deleteMatch(id: string): Promise<void> {
   const supabase = requireClient();
   const match = await getMatch(id);
-  if (match) {
+  if (match?.status === "scheduled") {
     try {
       await addDismissedIfaKey(matchIfaKey(match));
     } catch {

@@ -1,5 +1,5 @@
-import { matchKickoff } from "./fixtures";
-import { findExistingIfaMatch, ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
+import { matchKickoff, israelToday } from "./fixtures";
+import { activeDismissedSet, findExistingIfaMatch, ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
 import { ifaMatchKey, namesMatch, type IfaFixture } from "./ifa/parse";
 import { MATCH_TYPE_LABELS, Match, MatchStatus, MatchType } from "./types";
 
@@ -75,10 +75,11 @@ function fromFixture(fixture: IfaFixture): CalendarEvent {
 export function buildCalendarEvents(
   matches: Match[],
   fixtures: IfaFixture[],
-  dismissedKeys: Iterable<string> = []
+  dismissedKeys: Iterable<string> = [],
+  today = israelToday()
 ): CalendarEvent[] {
   const claimed = new Set<string>();
-  const dismissed = new Set(dismissedKeys);
+  const dismissed = activeDismissedSet(dismissedKeys, today);
   const events: CalendarEvent[] = [];
 
   for (const match of matches) {

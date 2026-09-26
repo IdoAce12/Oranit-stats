@@ -67,8 +67,31 @@ describe("fixtures", () => {
       kickoff_at: "2026-10-01T17:00:00.000Z",
     });
     const done = makeMatch({ id: "done", status: "finished", match_date: "2026-09-01" });
-    expect(nextScheduledMatch([later, done, soon])?.id).toBe("soon");
-    expect(splitMatches([later, done, soon]).finished[0].id).toBe("done");
+    expect(nextScheduledMatch([later, done, soon], "2026-09-26")?.id).toBe("soon");
+    expect(splitMatches([later, done, soon], "2026-09-26").finished[0].id).toBe("done");
+  });
+
+  it("מעדיף השרון נתניה על טוברוק ומדלג על משחק שעבר", () => {
+    const hasharon = makeMatch({
+      id: "hasharon",
+      status: "scheduled",
+      opponent: "מכבי השרון נתניה",
+      match_date: "2026-09-28",
+      kickoff_at: "2026-09-28T17:30:00.000Z",
+    });
+    const tovrok = makeMatch({
+      id: "tovrok",
+      status: "scheduled",
+      opponent: 'בית"ר טוברוק',
+      match_date: "2026-10-01",
+    });
+    const past = makeMatch({
+      id: "old-tovrok",
+      status: "scheduled",
+      opponent: 'בית"ר טוברוק',
+      match_date: "2026-09-01",
+    });
+    expect(nextScheduledMatch([tovrok, hasharon, past], "2026-09-26")?.id).toBe("hasharon");
   });
 
   it("ממיר תאריך ושעה ל-ISO", () => {

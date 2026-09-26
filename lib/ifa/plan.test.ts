@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeMatch } from "../testHelpers";
 import { ifaMatchKey, type IfaFixture } from "./parse";
-import { findExistingIfaMatch, isIfaCacheFresh, planFixtureSync } from "./plan";
+import { findExistingIfaMatch, isActiveDismissedKey, isIfaCacheFresh, planFixtureSync } from "./plan";
 
 function fixture(overrides: Partial<IfaFixture> = {}): IfaFixture {
   return {
@@ -85,11 +85,28 @@ describe("planFixtureSync", () => {
     expect(plan.inserts[0].notes).toBe("בית");
   });
 
-  it("לא מחזיר משחק שנמחק ידנית", () => {
-    const key = ifaMatchKey("2026-09-28", "מכבי השרון נתניה");
-    const plan = planFixtureSync([], [fixture()], [key]);
+  it("לא מחזיר משחק שנמחק אחרי שהתאריך עבר", () => {
+    const key = ifaMatchKey("2026-09-20", "מכבי השרון נתניה");
+    const plan = planFixtureSync([], [fixture({ date: "2026-09-20" })], [key], "2026-09-26");
     expect(plan.inserts).toHaveLength(0);
     expect(plan.skipped).toBe(1);
+  });
+
+  it("מחזיר את השרון כמשחק הבא גם אם נמחק, כל עוד התאריך לא הגיע", () => {
+    const key = ifaMatchKey("2026-09-28", "מכבי השרון נתניה");
+    const tovrok = makeMatch({
+      id: "t1",
+      status: "scheduled",
+      opponent: 'בית"ר טוברוק',
+      match_date: "2026-10-01",
+    });
+    const plan = planFixtureSync(
+      [tovrok],
+      [fixture(), fixture({ date: "2026-10-01", opponent: 'בית"ר טוברוק', time: null })],
+      [key],
+      "2026-09-26"
+    );
+    expect(plan.inserts.map((row) => row.opponent)).toContain("מכבי השרון נתניה");
   });
 
   it("מזהה דחייה לפי יריבה בלי ליצור כפילות", () => {
@@ -102,6 +119,13 @@ describe("planFixtureSync", () => {
     });
     const found = findExistingIfaMatch([existing], fixture({ date: "2026-10-08", opponent: 'בית"ר טוברוק' }));
     expect(found?.id).toBe("s1");
+  });
+});
+
+describe("isActiveDismissedKey", () => {
+  it("מתעלם ממחיקה של משחק שתאריכו עוד לא הגיע", () => {
+    expect(isActiveDismissedKey("2026-09-28|מכבי השרון נתניה", "2026-09-26")).toBe(false);
+    expect(isActiveDismissedKey("2026-09-20|ביתר טוברוק", "2026-09-26")).toBe(true);
   });
 });
 

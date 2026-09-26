@@ -1,5 +1,15 @@
 import { Match } from "./types";
 
+/** תאריך היום לפי שעון ישראל (YYYY-MM-DD). */
+export function israelToday(now: Date | number = Date.now(), timeZone = "Asia/Jerusalem"): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(now));
+}
+
 /** שעת שריקה — kickoff_at, או 20:00 בתאריך המשחק. */
 export function matchKickoff(match: Match): Date {
   if (match.kickoff_at) {
@@ -49,16 +59,16 @@ export function toIsraelKickoffIso(date: string, time: string, timeZone = "Asia/
   return new Date(ms).toISOString();
 }
 
-export function nextScheduledMatch(matches: Match[]): Match | null {
+export function nextScheduledMatch(matches: Match[], today = israelToday()): Match | null {
   const list = matches
-    .filter((m) => m.status === "scheduled")
+    .filter((m) => m.status === "scheduled" && (m.match_date || "") >= today)
     .sort((a, b) => matchKickoff(a).getTime() - matchKickoff(b).getTime());
   return list[0] ?? null;
 }
 
-export function splitMatches(matches: Match[]) {
+export function splitMatches(matches: Match[], today = israelToday()) {
   const scheduled = matches
-    .filter((m) => m.status === "scheduled")
+    .filter((m) => m.status === "scheduled" && (m.match_date || "") >= today)
     .sort((a, b) => matchKickoff(a).getTime() - matchKickoff(b).getTime());
   const live = matches.filter((m) => m.status === "live");
   const finished = matches

@@ -1,4 +1,4 @@
-import { toIsraelKickoffIso } from "../fixtures";
+import { israelToday, toIsraelKickoffIso } from "../fixtures";
 import { Match } from "../types";
 import { IFA_OUR_NAME } from "./config";
 import { ifaMatchKey, namesMatch, type IfaFixture, type IfaStandingRow } from "./parse";
@@ -70,17 +70,28 @@ export function findExistingIfaMatch(existing: Match[], fixture: IfaFixture): Ma
   return null;
 }
 
+/** מחיקה ידנית נשמרת רק אחרי שתאריך המשחק כבר עבר. עד אז הוא חוזר כמשחק הבא. */
+export function isActiveDismissedKey(key: string, today: string): boolean {
+  const date = key.split("|")[0] ?? "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) && date < today;
+}
+
+export function activeDismissedSet(keys: Iterable<string>, today = israelToday()): Set<string> {
+  return new Set([...keys].filter((k) => isActiveDismissedKey(k, today)));
+}
+
 /** רק משחקים בלי תוצאה נכנסים ללוח. לייב/הושלם לא נדרסים. ידידות לא נמחקות. */
 export function planFixtureSync(
   existing: Match[],
   fixtures: IfaFixture[],
-  dismissedKeys: Iterable<string> = []
+  dismissedKeys: Iterable<string> = [],
+  today = israelToday()
 ): IfaSyncPlan {
   const inserts: IfaMatchInsert[] = [];
   const updates: IfaMatchUpdate[] = [];
   let skipped = 0;
   const claimed = new Set<string>();
-  const dismissed = new Set(dismissedKeys);
+  const dismissed = activeDismissedSet(dismissedKeys, today);
 
   for (const fixture of fixtures) {
     if (fixture.score) {

@@ -39,10 +39,18 @@ describe("buildCalendarEvents", () => {
     expect(events[0].opponent).toBe("הפועל כפר קאסם");
   });
 
-  it("מדלג על משחק התאחדות שנמחק ידנית", () => {
-    const key = ifaMatchKey(leagueGame.date, leagueGame.opponent);
-    const events = buildCalendarEvents([], [leagueGame], [key]);
+  it("מדלג על משחק התאחדות שנמחק אחרי שהתאריך עבר", () => {
+    const past = { ...leagueGame, date: "2026-09-01" };
+    const key = ifaMatchKey(past.date, past.opponent);
+    const events = buildCalendarEvents([], [past], [key], "2026-09-26");
     expect(events).toHaveLength(0);
+  });
+
+  it("מציג משחק עתידי גם אם נמחק, כל עוד התאריך לא הגיע", () => {
+    const key = ifaMatchKey(leagueGame.date, leagueGame.opponent);
+    const events = buildCalendarEvents([], [leagueGame], [key], "2026-09-26");
+    expect(events).toHaveLength(1);
+    expect(events[0].opponent).toBe("הפועל כפר קאסם");
   });
 });
 

@@ -23,24 +23,31 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const load = () => {
+  useEffect(() => {
+    if (authLoading || !user) return;
     if (!isSupabaseConfigured) {
       setLoading(false);
       return;
     }
+    let cancelled = false;
     setLoading(true);
-    listMatches()
-      .then(setMatches)
-      .catch((e) => setError(e.message ?? "שגיאה בטעינת משחקים"))
-      .finally(() => setLoading(false));
-  };
-
-  useEffect(() => {
-    if (authLoading || !user) return;
-    load();
-    void requestIfaSync().then((result) => {
-      if (result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0)) load();
-    });
+    const run = async () => {
+      try {
+        const rows = await listMatches();
+        const result = await requestIfaSync();
+        const needReload = Boolean(result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0));
+        const nextRows = needReload ? await listMatches() : rows;
+        if (!cancelled) setMatches(nextRows);
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "שגיאה בטעינת משחקים");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, user]);
 
   const next = useMemo(() => nextScheduledMatch(matches), [matches]);
@@ -70,6 +77,11 @@ export default function HomePage() {
     try {
       await deleteMatch(m.id);
       setMatches((prev) => prev.filter((x) => x.id !== m.id));
+      const result = await requestIfaSync();
+      if (result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0)) {
+        const rows = await listMatches();
+        setMatches(rows);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "שגיאה במחיקה");
     } finally {
@@ -133,7 +145,9 @@ export default function HomePage() {
         <ConfigBanner />
         {error && <p className="mb-3 text-sm text-red-300">{error}</p>}
 
-        {liveNow ? (
+        {loading ? (
+          <PageSkeleton rows={3} />
+        ) : liveNow ? (
           <section className="match-glass">
             <p className="home-kicker text-[var(--accent)]">עכשיו בלייב</p>
             <h2 className="match-title">מול {liveNow.opponent}</h2>
