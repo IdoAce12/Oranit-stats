@@ -6,19 +6,18 @@ import {
   calendarEventIcs,
   eventsByDate,
   eventsOnDate,
-  nextCalendarDate,
   typeLine,
   whenLine,
   type CalendarEvent,
 } from "@/lib/calendarEvents";
 import {
-  localISODate,
   monthCells,
   monthTitle,
   parseISODate,
   shiftMonth,
   weekdayLabels,
 } from "@/lib/calendarMonth";
+import { israelToday } from "@/lib/fixtures";
 import { IFA_OUR_NAME } from "@/lib/ifa/config";
 import type { IfaStandingRow } from "@/lib/ifa/parse";
 import { CrestMark } from "./CrestMark";
@@ -78,35 +77,26 @@ export function MatchCalendar({
   events,
   standings,
   isCoach,
+  focusDate,
 }: {
   events: CalendarEvent[];
   standings: IfaStandingRow[];
   isCoach: boolean;
+  focusDate: string;
 }) {
-  const today = localISODate();
+  const today = israelToday();
   const byDate = useMemo(() => eventsByDate(events), [events]);
-  const [year, setYear] = useState(() => {
-    const iso = nextCalendarDate(events, today) ?? today;
-    return parseISODate(iso)?.year ?? new Date().getFullYear();
-  });
-  const [month, setMonth] = useState(() => {
-    const iso = nextCalendarDate(events, today) ?? today;
-    return parseISODate(iso)?.month ?? new Date().getMonth() + 1;
-  });
-  const [selected, setSelected] = useState(() => nextCalendarDate(events, today) ?? today);
-  const [didInit, setDidInit] = useState(events.length > 0);
+  const [year, setYear] = useState(() => parseISODate(focusDate)?.year ?? new Date().getFullYear());
+  const [month, setMonth] = useState(() => parseISODate(focusDate)?.month ?? new Date().getMonth() + 1);
+  const [selected, setSelected] = useState(focusDate);
 
   useEffect(() => {
-    if (didInit || events.length === 0) return;
-    const next = nextCalendarDate(events, today) ?? today;
-    const parts = parseISODate(next);
-    if (parts) {
-      setYear(parts.year);
-      setMonth(parts.month);
-    }
-    setSelected(next);
-    setDidInit(true);
-  }, [events, didInit, today]);
+    const parts = parseISODate(focusDate);
+    if (!parts) return;
+    setYear(parts.year);
+    setMonth(parts.month);
+    setSelected(focusDate);
+  }, [focusDate]);
 
   const cells = useMemo(() => monthCells(year, month), [year, month]);
   const title = monthTitle(year, month);

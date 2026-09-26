@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { listMatches } from "@/lib/db";
 import { requestIfaSync } from "@/lib/ifa/client";
 import type { IfaFixture, IfaStandingRow } from "@/lib/ifa/parse";
-import { buildCalendarEvents } from "@/lib/calendarEvents";
-import { splitMatches } from "@/lib/fixtures";
+import { buildCalendarEvents, nextCalendarDate } from "@/lib/calendarEvents";
+import { israelToday, splitMatches } from "@/lib/fixtures";
+import { nextOfficialFixture } from "@/lib/homeNext";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { Match } from "@/lib/types";
 import { AppHeader } from "../components/AppHeader";
@@ -23,29 +24,37 @@ export default function CalendarPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadMatches = () => {
-    if (!isSupabaseConfigured) return Promise.resolve();
-    return listMatches().then(setMatches);
-  };
-
   useEffect(() => {
     if (!isSupabaseConfigured) {
       setLoading(false);
       return;
     }
-    loadMatches()
-      .catch((e) => setError(e.message ?? "שגיאה"))
-      .finally(() => setLoading(false));
-
-    void requestIfaSync().then((result) => {
-      if (!result) return;
-      setStandings(result.standings ?? []);
-      setIfaFixtures(result.fixtures ?? []);
-      setDismissedKeys(result.dismissedKeys ?? []);
-      if ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0) {
-        void loadMatches();
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const rows = await listMatches();
+        if (!cancelled) setMatches(rows);
+        const result = await requestIfaSync(true);
+        if (cancelled) return;
+        if (result) {
+          setStandings(result.standings ?? []);
+          setIfaFixtures(result.fixtures ?? []);
+          setDismissedKeys(result.dismissedKeys ?? []);
+          if ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0) {
+            const again = await listMatches();
+            if (!cancelled) setMatches(again);
+          }
+        }
+      } catch (e) {
+        if (!cancelled) setError(e instanceof Error ? e.message : "שגיאה");
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    });
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const { live } = useMemo(() => splitMatches(matches), [matches]);
@@ -53,6 +62,8 @@ export default function CalendarPage() {
     () => buildCalendarEvents(matches, ifaFixtures, dismissedKeys),
     [matches, ifaFixtures, dismissedKeys]
   );
+  const today = israelToday();
+  const focusDate = nextCalendarDate(events, today, nextOfficialFixture(ifaFixtures, today)?.date) ?? today;
 
   return (
     <main className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 page-shell pb-nav">
@@ -83,7 +94,7 @@ export default function CalendarPage() {
             </section>
           )}
 
-          <MatchCalendar events={events} standings={standings} isCoach={isCoach} />
+          <MatchCalendar events={events} standings={standings} isCoach={isCoach} focusDate={focusDate} />
         </>
       )}
     </main>

@@ -84,6 +84,9 @@ export function buildCalendarEvents(
 
   for (const match of matches) {
     const fixture = fixtureForMatch(match, fixtures);
+    if (match.status === "finished" && fixture && !fixture.score?.trim()) {
+      continue;
+    }
     if (fixture) claimed.add(`${fixture.date}|${fixture.opponent}`);
     events.push(fromMatch(match, fixture));
   }
@@ -92,7 +95,8 @@ export function buildCalendarEvents(
     const key = ifaMatchKey(fixture.date, fixture.opponent);
     if (dismissed.has(key)) continue;
     if (claimed.has(`${fixture.date}|${fixture.opponent}`)) continue;
-    if (findExistingIfaMatch(matches, fixture)) continue;
+    const existing = findExistingIfaMatch(matches, fixture);
+    if (existing && existing.status !== "finished") continue;
     events.push(fromFixture(fixture));
   }
 
@@ -117,13 +121,18 @@ export function eventsByDate(events: CalendarEvent[]): Map<string, CalendarEvent
   return map;
 }
 
-export function nextCalendarDate(events: CalendarEvent[], today: string): string | null {
+/** תאריך לפתיחת הלוח: משחק רשמי הבא, אחרת היום — לא משחק מאוחר שנשאר במסד. */
+export function nextCalendarDate(
+  events: CalendarEvent[],
+  today: string,
+  officialDate?: string | null
+): string | null {
+  if (officialDate && officialDate >= today) return officialDate;
   const upcoming = events
-    .filter((e) => e.status === "live" || (e.status === "scheduled" && e.date >= today))
+    .filter((e) => e.status === "scheduled" && e.date >= today)
     .sort((a, b) => a.date.localeCompare(b.date) || (a.kickoffAt ?? "").localeCompare(b.kickoffAt ?? ""));
   if (upcoming[0]) return upcoming[0].date;
-  const past = [...events].sort((a, b) => b.date.localeCompare(a.date));
-  return past[0]?.date ?? null;
+  return today;
 }
 
 export function typeLine(event: CalendarEvent): string {
