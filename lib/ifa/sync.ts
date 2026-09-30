@@ -1,6 +1,7 @@
+import dns from "node:dns";
 import { createMatch, getIfaCache, listDismissedIfaKeys, listMatches, saveIfaCache, updateMatch } from "../db";
 import { israelToday } from "../fixtures";
-import { IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL } from "./config";
+import { IFA_FETCH_HEADERS, IFA_FETCH_TIMEOUT_MS, IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL } from "./config";
 import { parseIfaGames, parseIfaStandings, type IfaFixture, type IfaStandingRow } from "./parse";
 import {
   activeDismissedSet,
@@ -18,19 +19,22 @@ function allowLocalTls(): void {
   }
 }
 
+try {
+  dns.setDefaultResultOrder("ipv4first");
+} catch {
+  /* ignore */
+}
+
 async function fetchIfaHtml(url: string): Promise<string> {
   allowLocalTls();
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15000);
+  const timer = setTimeout(() => ctrl.abort(), IFA_FETCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
       cache: "no-store",
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; OranitScout/1.0)",
-        Accept: "text/html,application/xhtml+xml",
-        "Accept-Language": "he,en;q=0.8",
-      },
+      redirect: "follow",
+      headers: IFA_FETCH_HEADERS,
     });
     if (!res.ok) throw new Error(`האתר של ההתאחדות החזיר ${res.status}`);
     return await res.text();

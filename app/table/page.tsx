@@ -22,13 +22,15 @@ export default function TablePage() {
       setError("לא הצלחנו לטעון את הטבלה מההתאחדות");
       return;
     }
-    setStandings(result.standings ?? []);
+    if ((result.standings?.length ?? 0) > 0 || !result.error) {
+      setStandings(result.standings ?? []);
+    }
     setFetchedAt(result.fetchedAt ?? null);
     setError(result.error ?? null);
   };
 
   useEffect(() => {
-    void load(true).finally(() => setLoading(false));
+    void load(false).finally(() => setLoading(false));
   }, []);
 
   const refresh = async () => {

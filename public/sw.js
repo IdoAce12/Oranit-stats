@@ -1,7 +1,7 @@
 // Service worker פשוט: מטמון של מעטפת האפליקציה כדי שתיפתח גם בלי רשת.
 // שים לב: הנתונים עצמם נשמרים ב-localStorage (תור אירועים) ומסתנכרנים ל-Supabase.
 
-const CACHE = "scout-shell-v5";
+const CACHE = "scout-shell-v6";
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
@@ -26,6 +26,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   // בקשות ל-Supabase תמיד עוברות לרשת (לא ממטמנים נתונים)
   if (url.origin !== self.location.origin) return;
+  // סנכרון התאחדות ו-API אחרים — בלי מטמון, אחרת הטלפון נשאר עם טבלה/שעה ישנים
+  if (url.pathname.startsWith("/api/")) return;
 
   // אסטרטגיה: network-first עם נפילה למטמון (כדי לקבל קוד עדכני כשיש רשת)
   event.respondWith(

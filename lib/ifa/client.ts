@@ -4,8 +4,8 @@ export async function requestIfaSync(force = false): Promise<IfaSyncResult | nul
   try {
     const url = force ? "/api/ifa/sync?fresh=1" : "/api/ifa/sync";
     const res = await fetch(url, { method: "GET", cache: "no-store" });
-    const data = (await res.json()) as IfaSyncResult & { error?: string };
-    if (!res.ok && !data) return null;
+    const data = (await res.json().catch(() => null)) as (IfaSyncResult & { error?: string }) | null;
+    if (!data) return null;
     return data;
   } catch {
     return null;

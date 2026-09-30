@@ -150,4 +150,11 @@ describe("isIfaCacheFresh", () => {
     expect(isIfaCacheFresh("2026-09-23T08:00:00.000Z", now, 6 * 60 * 60 * 1000)).toBe(false);
     expect(isIfaCacheFresh(null, now, 6 * 60 * 60 * 1000)).toBe(false);
   });
+
+  it("עם חלון של עשר דקות הקאש נחשב ישן מהר", () => {
+    const now = Date.parse("2026-09-24T08:00:00.000Z");
+    const tenMin = 10 * 60 * 1000;
+    expect(isIfaCacheFresh("2026-09-24T07:55:00.000Z", now, tenMin)).toBe(true);
+    expect(isIfaCacheFresh("2026-09-24T07:49:00.000Z", now, tenMin)).toBe(false);
+  });
 });
