@@ -42,21 +42,22 @@ export function PhotoCarousel() {
         startX.current = null;
       }}
     >
-      {CLUB_PHOTOS.map((src, i) => (
+      {CLUB_PHOTOS.map((photo, i) => (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          key={src}
-          src={src}
+          key={photo.src}
+          src={photo.src}
           alt=""
           draggable={false}
           className={`photo-slide ${i === index ? "is-active" : ""}`}
+          style={photo.objectPosition ? { objectPosition: photo.objectPosition } : undefined}
         />
       ))}
       <div className="photo-veil" aria-hidden />
       <div className="photo-dots" dir="ltr">
-        {CLUB_PHOTOS.map((src, i) => (
+        {CLUB_PHOTOS.map((photo, i) => (
           <button
-            key={src}
+            key={photo.src}
             type="button"
             aria-label={`תמונה ${i + 1}`}
             className={i === index ? "is-on" : ""}
