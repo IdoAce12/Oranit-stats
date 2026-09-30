@@ -69,4 +69,27 @@ describe("homeNextMatch", () => {
     });
     expect(homeNextMatch([row], [hasharon, tovrok], "2026-09-26")?.id).toBe("h1");
   });
+
+  it("מציג טוברוק בדחייה ולא את התאריך הישן", () => {
+    const moved: IfaFixture = {
+      date: "2026-10-06",
+      opponent: 'בית"ר טוברוק',
+      home: true,
+      venue: "קרית אונו ישן",
+      time: "21:30",
+      score: null,
+      gameId: "1",
+    };
+    const stale = makeMatch({
+      id: "t1",
+      status: "scheduled",
+      opponent: 'בית"ר טוברוק',
+      match_date: "2026-10-01",
+    });
+    const next = homeNextMatch([stale], [moved], "2026-09-30");
+    expect(next?.match_date).toBe("2026-10-06");
+    expect(nextOfficialFixture([moved, { ...moved, date: "2026-10-01", time: null }], "2026-09-30")?.date).toBe(
+      "2026-10-06"
+    );
+  });
 });

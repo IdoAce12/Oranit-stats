@@ -37,9 +37,11 @@ export default function HomePage() {
     const run = async () => {
       try {
         const rows = await listMatches();
-        const result = await requestIfaSync();
+        const result = await requestIfaSync(true);
         if (!cancelled && result?.fixtures) setFixtures(result.fixtures);
-        const needReload = Boolean(result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0));
+        const needReload = Boolean(
+          result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0 || (result.deleted ?? 0) > 0)
+        );
         const nextRows = needReload ? await listMatches() : rows;
         if (!cancelled) setMatches(nextRows);
       } catch (e) {

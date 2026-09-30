@@ -1,10 +1,12 @@
 import dns from "node:dns";
-import { createMatch, getIfaCache, listDismissedIfaKeys, listMatches, saveIfaCache, updateMatch } from "../db";
+import { createMatch, deleteMatch, getIfaCache, listDismissedIfaKeys, listMatches, saveIfaCache, updateMatch } from "../db";
 import { israelToday } from "../fixtures";
-import { IFA_FETCH_HEADERS, IFA_FETCH_TIMEOUT_MS, IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL } from "./config";
+import { IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL } from "./config";
+import { fetchIfaHtml } from "./fetchHtml";
 import { parseIfaGames, parseIfaStandings, type IfaFixture, type IfaStandingRow } from "./parse";
 import {
   activeDismissedSet,
+  collapseIfaFixtures,
   errorMessage,
   isIfaCacheFresh,
   isMissingIfaSchema,
@@ -13,34 +15,10 @@ import {
   type IfaSyncResult,
 } from "./plan";
 
-function allowLocalTls(): void {
-  if (typeof window === "undefined" && process.env.VERCEL !== "1") {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED ??= "0";
-  }
-}
-
 try {
   dns.setDefaultResultOrder("ipv4first");
 } catch {
   /* ignore */
-}
-
-async function fetchIfaHtml(url: string): Promise<string> {
-  allowLocalTls();
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), IFA_FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      cache: "no-store",
-      redirect: "follow",
-      headers: IFA_FETCH_HEADERS,
-    });
-    if (!res.ok) throw new Error(`האתר של ההתאחדות החזיר ${res.status}`);
-    return await res.text();
-  } finally {
-    clearTimeout(timer);
-  }
 }
 
 async function applyPlan(plan: IfaSyncPlan, dismissedKeys: Iterable<string> = []): Promise<void> {
@@ -70,6 +48,15 @@ async function applyPlan(plan: IfaSyncPlan, dismissedKeys: Iterable<string> = []
       throw e;
     }
   }
+  for (const id of plan.deletes) {
+    try {
+      await deleteMatch(id, { dismiss: false });
+    } catch (e) {
+      const msg = errorMessage(e);
+      if (/0 rows|not found|could not find|No rows/i.test(msg)) continue;
+      throw e;
+    }
+  }
 }
 
 function fromCache(
@@ -78,18 +65,23 @@ function fromCache(
 ): IfaSyncResult {
   return {
     standings: cache?.standings ?? [],
-    fixtures: cache?.fixtures ?? [],
+    fixtures: collapseIfaFixtures(cache?.fixtures ?? []),
     fetchedAt: cache?.fetched_at ?? null,
     inserted: 0,
     updated: 0,
     skipped: 0,
+    deleted: 0,
     refreshed: false,
     dismissedKeys: [],
     ...extra,
   };
 }
 
-export async function runIfaSync(opts: { force?: boolean } = {}): Promise<IfaSyncResult> {
+export async function runIfaSync(
+  opts: { force?: boolean; gamesHtml?: string; teamHtml?: string } = {}
+): Promise<IfaSyncResult> {
+  const suppliedHtml = Boolean(opts.gamesHtml?.trim() || opts.teamHtml?.trim());
+  const force = Boolean(opts.force || suppliedHtml);
   let cache: Awaited<ReturnType<typeof getIfaCache>> = null;
   let schemaMissing = false;
   try {
@@ -127,6 +119,7 @@ export async function runIfaSync(opts: { force?: boolean } = {}): Promise<IfaSyn
           inserted: plan.inserts.filter((row) => !blocked.has(row.ifa_key)).length,
           updated: plan.updates.length,
           skipped: plan.skipped,
+          deleted: plan.deletes.length,
         });
       } catch (e) {
         console.error("ifa cache apply", e);
@@ -139,11 +132,9 @@ export async function runIfaSync(opts: { force?: boolean } = {}): Promise<IfaSyn
   const migrationError = "חסר חיבור להתאחדות — הרץ את db/migration_v12.sql ב-Supabase SQL Editor";
 
   try {
-    const [gamesHtml, teamHtml] = await Promise.all([
-      fetchIfaHtml(IFA_GAMES_URL),
-      fetchIfaHtml(IFA_TEAM_URL),
-    ]);
-    const fixtures = parseIfaGames(gamesHtml);
+    const gamesHtml = opts.gamesHtml?.trim() ? opts.gamesHtml : await fetchIfaHtml(IFA_GAMES_URL);
+    const teamHtml = opts.teamHtml?.trim() ? opts.teamHtml : await fetchIfaHtml(IFA_TEAM_URL);
+    const fixtures = collapseIfaFixtures(parseIfaGames(gamesHtml));
     const standings = parseIfaStandings(teamHtml);
     if (fixtures.length === 0 && standings.length === 0) {
       return fromCache(cache, {
@@ -173,6 +164,7 @@ export async function runIfaSync(opts: { force?: boolean } = {}): Promise<IfaSyn
           inserted: plan.inserts.filter((row) => !blocked.has(row.ifa_key)).length,
           updated: plan.updates.length,
           skipped: plan.skipped,
+          deleted: plan.deletes.length,
           refreshed: true,
           dismissedKeys: active,
         };
@@ -189,6 +181,24 @@ export async function runIfaSync(opts: { force?: boolean } = {}): Promise<IfaSyn
   } catch (e) {
     const msg = errorMessage(e);
     console.error("ifa fetch", e);
+    if (!schemaMissing && cache?.fixtures?.length) {
+      try {
+        const existing = await listMatches();
+        const plan = planFixtureSync(existing, cache.fixtures, dismissedKeys, today);
+        await applyPlan(plan, dismissedKeys);
+        const blocked = new Set(activeDismissed);
+        return fromCache(cache, {
+          dismissedKeys: activeDismissed,
+          inserted: plan.inserts.filter((row) => !blocked.has(row.ifa_key)).length,
+          updated: plan.updates.length,
+          skipped: plan.skipped,
+          deleted: plan.deletes.length,
+          error: schemaMissing ? migrationError : msg,
+        });
+      } catch (applyErr) {
+        console.error("ifa cache apply after fetch fail", applyErr);
+      }
+    }
     if (cache) return fromCache(cache, { dismissedKeys: activeDismissed, error: schemaMissing ? migrationError : msg });
     return fromCache(null, { dismissedKeys: activeDismissed, error: schemaMissing ? migrationError : msg });
   }

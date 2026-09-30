@@ -1,5 +1,5 @@
 import { matchKickoff, israelToday, toIsraelKickoffIso } from "./fixtures";
-import { activeDismissedSet, findExistingIfaMatch, ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
+import { activeDismissedSet, collapseIfaFixtures, daysBetweenIso, IFA_RESCHEDULE_DAYS, ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
 import { ifaMatchKey, namesMatch, type IfaFixture } from "./ifa/parse";
 import type { Training } from "./trainings";
 import { MATCH_TYPE_LABELS, Match, MatchStatus, MatchType } from "./types";
@@ -100,6 +100,36 @@ function fromTraining(training: Training): CalendarEvent {
   };
 }
 
+function betterScheduledEvent(a: CalendarEvent, b: CalendarEvent): CalendarEvent {
+  const aTime = Boolean(a.time);
+  const bTime = Boolean(b.time);
+  if (aTime !== bTime) return aTime ? a : b;
+  if (a.date !== b.date) return a.date >= b.date ? a : b;
+  if (Boolean(a.matchId) !== Boolean(b.matchId)) return a.matchId ? a : b;
+  return a;
+}
+
+function collapseScheduledDuplicates(events: CalendarEvent[]): CalendarEvent[] {
+  const others = events.filter((e) => e.kind !== "match" || e.status !== "scheduled");
+  const scheduled = events.filter((e) => e.kind === "match" && e.status === "scheduled");
+  const used = new Set<number>();
+  const kept: CalendarEvent[] = [];
+  for (let i = 0; i < scheduled.length; i++) {
+    if (used.has(i)) continue;
+    const cluster = [scheduled[i]];
+    used.add(i);
+    for (let j = i + 1; j < scheduled.length; j++) {
+      if (used.has(j)) continue;
+      if (!namesMatch(scheduled[i].opponent, scheduled[j].opponent)) continue;
+      if (daysBetweenIso(scheduled[i].date, scheduled[j].date) > IFA_RESCHEDULE_DAYS) continue;
+      cluster.push(scheduled[j]);
+      used.add(j);
+    }
+    kept.push(cluster.reduce(betterScheduledEvent));
+  }
+  return [...others, ...kept];
+}
+
 /** מאחד משחקים מהמסד עם לוח ההתאחדות, בלי כפילויות. */
 export function buildCalendarEvents(
   matches: Match[],
@@ -110,23 +140,22 @@ export function buildCalendarEvents(
 ): CalendarEvent[] {
   const claimed = new Set<string>();
   const dismissed = activeDismissedSet(dismissedKeys, today);
+  const official = collapseIfaFixtures(fixtures);
   const events: CalendarEvent[] = [];
 
   for (const match of matches) {
-    const fixture = fixtureForMatch(match, fixtures);
+    const fixture = fixtureForMatch(match, official);
     if (match.status === "finished" && fixture && !fixture.score?.trim()) {
       continue;
     }
-    if (fixture) claimed.add(`${fixture.date}|${fixture.opponent}`);
+    if (fixture) claimed.add(ifaMatchKey(fixture.date, fixture.opponent));
     events.push(fromMatch(match, fixture));
   }
 
-  for (const fixture of fixtures) {
+  for (const fixture of official) {
     const key = ifaMatchKey(fixture.date, fixture.opponent);
     if (dismissed.has(key)) continue;
-    if (claimed.has(`${fixture.date}|${fixture.opponent}`)) continue;
-    const existing = findExistingIfaMatch(matches, fixture);
-    if (existing && existing.status !== "finished") continue;
+    if (claimed.has(key)) continue;
     events.push(fromFixture(fixture));
   }
 
@@ -134,7 +163,7 @@ export function buildCalendarEvents(
     events.push(fromTraining(training));
   }
 
-  return events.sort((a, b) => {
+  return collapseScheduledDuplicates(events).sort((a, b) => {
     const ak = a.kickoffAt ?? `${a.date}T12:00:00`;
     const bk = b.kickoffAt ?? `${b.date}T12:00:00`;
     const byTime = ak.localeCompare(bk);

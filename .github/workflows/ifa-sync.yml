@@ -1,0 +1,44 @@
+name: IFA sync
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Scrape football.org.il
+        env:
+          GAMES_URL: https://www.football.org.il/team-details/team-games/?team_id=2735&season_id=28
+          TEAM_URL: https://www.football.org.il/team-details/?team_id=2735&season_id=28
+          UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
+        run: |
+          curl -fsSL --max-time 25 -A "$UA" -H "Accept-Language: he-IL,he;q=0.9" -H "Accept: text/html" -o games.html "$GAMES_URL"
+          curl -fsSL --max-time 25 -A "$UA" -H "Accept-Language: he-IL,he;q=0.9" -H "Accept: text/html" -o team.html "$TEAM_URL"
+          grep -q "רשימת המשחקים" games.html
+          grep -q "מקום" team.html
+          if grep -q "Attention Required" games.html && grep -qi cloudflare games.html; then
+            echo "Cloudflare blocked the games page"
+            exit 1
+          fi
+
+      - name: Push HTML to production
+        env:
+          IFA_CRON_SECRET: ${{ secrets.IFA_CRON_SECRET }}
+          IFA_CRON_URL: https://oranit-stats.vercel.app/api/ifa/cron
+        run: |
+          if [ -z "$IFA_CRON_SECRET" ]; then
+            echo "Missing GitHub secret IFA_CRON_SECRET"
+            exit 1
+          fi
+          node -e "const fs=require('fs'); fs.writeFileSync('payload.json', JSON.stringify({ gamesHtml: fs.readFileSync('games.html','utf8'), teamHtml: fs.readFileSync('team.html','utf8') }))"
+          code=$(curl -sS -o body.json -w "%{http_code}" -X POST "$IFA_CRON_URL" \
+            -H "Authorization: Bearer $IFA_CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            --data-binary @payload.json)
+          echo "HTTP $code"
+          head -c 500 body.json; echo
+          test "$code" = "200"

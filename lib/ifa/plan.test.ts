@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeMatch } from "../testHelpers";
 import { ifaMatchKey, type IfaFixture } from "./parse";
-import { findExistingIfaMatch, isActiveDismissedKey, isIfaCacheFresh, planFixtureSync } from "./plan";
+import { collapseIfaFixtures, findExistingIfaMatch, isActiveDismissedKey, isIfaCacheFresh, planFixtureSync } from "./plan";
 
 function fixture(overrides: Partial<IfaFixture> = {}): IfaFixture {
   return {
@@ -133,6 +133,88 @@ describe("planFixtureSync", () => {
     });
     const found = findExistingIfaMatch([existing], fixture({ date: "2026-10-08", opponent: 'בית"ר טוברוק' }));
     expect(found?.id).toBe("s1");
+  });
+
+  it("כשמתפרסמת שעה — מעדכן את הישן ומוחק כפילות מול אותה יריבה", () => {
+    const placeholder = makeMatch({
+      id: "old",
+      status: "scheduled",
+      opponent: "שמשון בני טייבה",
+      match_date: "2026-10-06",
+      match_type: "league",
+      kickoff_at: null,
+      ifa_key: ifaMatchKey("2026-10-06", "שמשון בני טייבה"),
+    });
+    const timed = makeMatch({
+      id: "dup",
+      status: "scheduled",
+      opponent: "שמשון בני טייבה",
+      match_date: "2026-10-08",
+      match_type: "league",
+      kickoff_at: "2026-10-08T17:00:00.000Z",
+      ifa_key: ifaMatchKey("2026-10-08", "שמשון בני טייבה"),
+    });
+    const official = fixture({
+      date: "2026-10-08",
+      opponent: "שמשון בני טייבה",
+      time: "20:00",
+      home: false,
+      venue: "",
+    });
+    const plan = planFixtureSync([placeholder, timed], [official], [], "2026-09-30");
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.updates.some((row) => row.id === "dup" && row.kickoff_at !== null)).toBe(true);
+    expect(plan.deletes).toContain("old");
+    expect(plan.deletes).not.toContain("dup");
+  });
+
+  it("דחיית טוברוק מעדכנת תאריך שעה ומגרש במקום להשאיר את הישן", () => {
+    const existing = makeMatch({
+      id: "t1",
+      status: "scheduled",
+      opponent: 'בית"ר טוברוק',
+      match_date: "2026-10-01",
+      match_type: "league",
+      kickoff_at: "2026-10-01T14:00:00.000Z",
+      notes: "בית · הוד השרון נוה הדר",
+    });
+    const moved = fixture({
+      date: "2026-10-06",
+      opponent: 'בית"ר טוברוק',
+      time: "21:30",
+      home: true,
+      venue: "קרית אונו ישן",
+    });
+    const plan = planFixtureSync([existing], [moved], [], "2026-09-30");
+    expect(plan.inserts).toHaveLength(0);
+    expect(plan.deletes).toHaveLength(0);
+    expect(plan.updates).toHaveLength(1);
+    expect(plan.updates[0]).toMatchObject({
+      id: "t1",
+      match_date: "2026-10-06",
+      notes: "בית · קרית אונו ישן",
+    });
+    expect(plan.updates[0].kickoff_at).toBe("2026-10-06T18:30:00.000Z");
+  });
+
+  it("משאיר סיבוב שני מול אותה יריבה", () => {
+    const first = fixture({ date: "2026-10-08", opponent: "שמשון בני טייבה", time: "20:00" });
+    const second = fixture({ date: "2026-12-25", opponent: "שמשון בני טייבה", time: null });
+    const plan = planFixtureSync([], [first, second], [], "2026-09-30");
+    expect(plan.inserts).toHaveLength(2);
+    expect(plan.deletes).toHaveLength(0);
+  });
+});
+
+describe("collapseIfaFixtures", () => {
+  it("כשיש שורה בלי שעה ושורה עם שעה באותו שבוע נשארת רק זו עם השעה", () => {
+    const kept = collapseIfaFixtures([
+      fixture({ date: "2026-10-06", opponent: "שמשון בני טייבה", time: null }),
+      fixture({ date: "2026-10-08", opponent: "שמשון בני טייבה", time: "20:00" }),
+    ]);
+    expect(kept).toHaveLength(1);
+    expect(kept[0].date).toBe("2026-10-08");
+    expect(kept[0].time).toBe("20:00");
   });
 });
 

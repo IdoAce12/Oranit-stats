@@ -130,3 +130,78 @@ describe("nextCalendarDate", () => {
     expect(nextCalendarDate(events, "2026-09-26", "2026-09-28")).toBe("2026-09-28");
   });
 });
+
+describe("כפילויות אחרי עדכון שעה", () => {
+  it("משאיר שמשון אחד כשיש תאריך ישן בלי שעה ותאריך חדש עם שעה", () => {
+    const events = buildCalendarEvents(
+      [
+        makeMatch({
+          id: "old",
+          opponent: "שמשון בני טייבה",
+          match_date: "2026-10-06",
+          status: "scheduled",
+          match_type: "league",
+        }),
+      ],
+      [
+        {
+          date: "2026-10-06",
+          opponent: "שמשון בני טייבה",
+          home: false,
+          venue: "",
+          time: null,
+          score: null,
+          gameId: null,
+        },
+        {
+          date: "2026-10-08",
+          opponent: "שמשון בני טייבה",
+          home: false,
+          venue: "",
+          time: "20:00",
+          score: null,
+          gameId: "99",
+        },
+      ],
+      [],
+      "2026-09-30"
+    );
+    const shimshon = events.filter((e) => e.kind === "match" && e.opponent.includes("שמשון"));
+    expect(shimshon).toHaveLength(1);
+    expect(shimshon[0].date).toBe("2026-10-08");
+    expect(shimshon[0].time).toBe("20:00");
+  });
+
+  it("מציג את טוברוק בדחייה ל-6/10 ולא את 1/10", () => {
+    const events = buildCalendarEvents(
+      [
+        makeMatch({
+          id: "t1",
+          opponent: 'בית"ר טוברוק',
+          match_date: "2026-10-01",
+          status: "scheduled",
+          match_type: "league",
+          kickoff_at: "2026-10-01T14:00:00.000Z",
+        }),
+      ],
+      [
+        {
+          date: "2026-10-06",
+          opponent: 'בית"ר טוברוק',
+          home: true,
+          venue: "קרית אונו ישן",
+          time: "21:30",
+          score: null,
+          gameId: "1",
+        },
+      ],
+      [],
+      "2026-09-30"
+    );
+    const tovrok = events.filter((e) => e.opponent.includes("טוברוק"));
+    expect(tovrok).toHaveLength(1);
+    expect(tovrok[0].date).toBe("2026-10-06");
+    expect(tovrok[0].time).toBe("21:30");
+    expect(nextCalendarDate(events, "2026-09-30", "2026-10-06")).toBe("2026-10-06");
+  });
+});

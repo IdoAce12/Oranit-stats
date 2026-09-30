@@ -42,13 +42,13 @@ export default function CalendarPage() {
         } catch {
           if (!cancelled) setTrainings([]);
         }
-        const result = await requestIfaSync();
+        const result = await requestIfaSync(true);
         if (cancelled) return;
         if (result) {
           setStandings(result.standings ?? []);
           setIfaFixtures(result.fixtures ?? []);
           setDismissedKeys(result.dismissedKeys ?? []);
-          if ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0) {
+          if ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0 || (result.deleted ?? 0) > 0) {
             const again = await listMatches();
             if (!cancelled) setMatches(again);
           }

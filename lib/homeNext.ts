@@ -1,7 +1,7 @@
 import { israelToday, nextScheduledMatch } from "./fixtures";
 import { IFA_OUR_NAME } from "./ifa/config";
 import { ifaMatchKey, namesMatch, type IfaFixture } from "./ifa/parse";
-import { ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
+import { collapseIfaFixtures, daysBetweenIso, IFA_RESCHEDULE_DAYS, ifaVenueNote, kickoffFromIfa } from "./ifa/plan";
 import { Match } from "./types";
 
 export const IFA_PENDING_PREFIX = "ifa:";
@@ -12,7 +12,7 @@ export function isPendingIfaMatch(match: Match): boolean {
 
 /** המשחק הרשמי הבא מאתר ההתאחדות — בלי תוצאה, מהתאריך של היום והלאה. */
 export function nextOfficialFixture(fixtures: IfaFixture[], today = israelToday()): IfaFixture | null {
-  const upcoming = fixtures
+  const upcoming = collapseIfaFixtures(fixtures)
     .filter((f) => !f.score?.trim() && f.date >= today)
     .sort(
       (a, b) => a.date.localeCompare(b.date) || (a.time ?? "99:99").localeCompare(b.time ?? "99:99")
@@ -41,7 +41,12 @@ function usableMatchForFixture(matches: Match[], fixture: IfaFixture): Match | n
   const candidates = matches.filter((m) => {
     if (m.status === "finished") return false;
     if (m.ifa_key === key) return true;
-    return m.match_date === fixture.date && namesMatch(m.opponent, fixture.opponent);
+    if (m.match_date === fixture.date && namesMatch(m.opponent, fixture.opponent)) return true;
+    return (
+      m.status === "scheduled" &&
+      namesMatch(m.opponent, fixture.opponent) &&
+      daysBetweenIso(m.match_date, fixture.date) <= IFA_RESCHEDULE_DAYS
+    );
   });
   return candidates.find((m) => m.status === "live") ?? candidates.find((m) => m.status === "scheduled") ?? null;
 }
@@ -70,7 +75,8 @@ export function homeNextMatch(
   if (official) {
     const found = usableMatchForFixture(matches, official);
     if (found?.status === "live") return null;
-    return found ?? pendingMatchFromFixture(official);
+    if (found && found.match_date === official.date) return found;
+    return pendingMatchFromFixture(official);
   }
   return nextScheduledMatch(matches, today);
 }
