@@ -6,6 +6,16 @@ export function isBlockedIfaPage(html: string, status = 200): boolean {
   return html.includes("Attention Required") && /cloudflare/i.test(html);
 }
 
+export function looksLikeIfaHtml(html: string): boolean {
+  if (!html || html.length < 800) return false;
+  if (html.includes("Attention Required") && /cloudflare/i.test(html)) return false;
+  return (
+    html.includes("רשימת המשחקים") ||
+    html.includes("מקום") ||
+    html.includes("הפועל אורנית")
+  );
+}
+
 function curlBin(): string {
   return process.platform === "win32" ? "curl.exe" : "curl";
 }
@@ -36,7 +46,7 @@ function fetchIfaHtmlViaCurl(url: string, timeoutMs: number): Promise<string> {
     child.on("error", reject);
     child.on("close", (code) => {
       const html = Buffer.concat(chunks).toString("utf8");
-      if (isBlockedIfaPage(html, code === 0 ? 200 : 403) || html.length < 800) {
+      if (isBlockedIfaPage(html, code === 0 ? 200 : 403) || !looksLikeIfaHtml(html)) {
         reject(new Error(err.trim() || "ההתאחדות חסמה את הבקשה"));
         return;
       }
@@ -45,25 +55,54 @@ function fetchIfaHtmlViaCurl(url: string, timeoutMs: number): Promise<string> {
   });
 }
 
-export async function fetchIfaHtml(url: string): Promise<string> {
-  if (typeof window === "undefined" && process.env.VERCEL !== "1") {
-    process.env.NODE_TLS_REJECT_UNAUTHORIZED ??= "0";
-  }
+async function fetchWithTimeout(url: string, headers: Record<string, string>, timeoutMs: number): Promise<string | null> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), IFA_FETCH_TIMEOUT_MS);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
       cache: "no-store",
       redirect: "follow",
-      headers: IFA_FETCH_HEADERS,
+      headers,
     });
     const html = await res.text();
-    if (res.ok && !isBlockedIfaPage(html, res.status)) return html;
+    if (res.ok && looksLikeIfaHtml(html) && !isBlockedIfaPage(html, res.status)) return html;
   } catch {
-    /* Node/undici לעתים נחסם ב-Cloudflare; curl במחשב המקומי עובר */
+    /* try the next fetch path */
   } finally {
     clearTimeout(timer);
   }
-  return fetchIfaHtmlViaCurl(url, IFA_FETCH_TIMEOUT_MS);
+  return null;
+}
+
+async function fetchIfaHtmlViaProxies(url: string, timeoutMs: number): Promise<string> {
+  const proxied = [
+    {
+      href: `https://r.jina.ai/${url}`,
+      headers: { ...IFA_FETCH_HEADERS, "X-Return-Format": "html", "X-Timeout": "15" },
+    },
+    {
+      href: `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      headers: IFA_FETCH_HEADERS,
+    },
+  ];
+  for (const proxy of proxied) {
+    const html = await fetchWithTimeout(proxy.href, proxy.headers, timeoutMs);
+    if (html) return html;
+  }
+  throw new Error("ההתאחדות חסמה את הבקשה");
+}
+
+export async function fetchIfaHtml(url: string): Promise<string> {
+  if (typeof window === "undefined" && process.env.VERCEL !== "1") {
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED ??= "0";
+  }
+  const fromFetch = await fetchWithTimeout(url, IFA_FETCH_HEADERS, IFA_FETCH_TIMEOUT_MS);
+  if (fromFetch) return fromFetch;
+  try {
+    return await fetchIfaHtmlViaCurl(url, IFA_FETCH_TIMEOUT_MS);
+  } catch {
+    /* Vercel Linux often has no usable curl, or Cloudflare still blocks it */
+  }
+  return fetchIfaHtmlViaProxies(url, IFA_FETCH_TIMEOUT_MS);
 }

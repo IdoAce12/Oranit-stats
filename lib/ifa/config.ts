@@ -13,6 +13,14 @@ export const IFA_FETCH_HEADERS: Record<string, string> = {
   Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
   "Accept-Language": "he-IL,he;q=0.9,en-US;q=0.8,en;q=0.7",
   Referer: IFA_TEAM_URL,
+  "Upgrade-Insecure-Requests": "1",
+  "sec-ch-ua": '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+  "sec-ch-ua-mobile": "?0",
+  "sec-ch-ua-platform": '"Windows"',
+  "sec-fetch-dest": "document",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-site": "none",
+  "sec-fetch-user": "?1",
 };
 
 export const IFA_OUR_ALIASES = [
