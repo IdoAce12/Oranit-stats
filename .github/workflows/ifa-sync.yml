@@ -6,187 +6,66 @@ on:
   workflow_dispatch:
 
 env:
-  GAMES_URL: https://www.football.org.il/team-details/team-games/?team_id=2735&season_id=28
-  TEAM_URL: https://www.football.org.il/team-details/?team_id=2735&season_id=28
-  UA: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36
   IFA_CRON_URL: https://oranit-stats.vercel.app/api/ifa/cron
+  # הכתובות המקודדות של עמודי ההתאחדות כדי ש-ZenRows יוכל לעבד אותן
+  ENC_GAMES: "https%3A%2F%2Fwww.football.org.il%2Fteam-details%2Fteam-games%2F%3Fteam_id%3D2735%26season_id%3D28"
+  ENC_TEAM: "https%3A%2F%2Fwww.football.org.il%2Fteam-details%2F%3Fteam_id%3D2735%26season_id%3D28"
 
 jobs:
-  linux:
+  sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-    outputs:
-      pushed: ${{ steps.deliver.outputs.pushed }}
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Scrape football.org.il
+      - name: Scrape football.org.il via ZenRows
         id: scrape
-        run: |
-          set +e
-          scraped=false
-
-          ifa_ok() {
-            test -s games.html && test -s team.html \
-              && grep -q "רשימת המשחקים" games.html \
-              && grep -q "מקום" team.html \
-              && ! grep -q "Attention Required" games.html
-          }
-
-          echo "::group::curl-impersonate (Chrome TLS)"
-          curl -fsSL --max-time 60 -o ci.tgz \
-            "https://github.com/lexiforest/curl-impersonate/releases/download/v1.5.6/curl-impersonate-v1.5.6.x86_64-linux-gnu.tar.gz"
-          mkdir -p "$RUNNER_TEMP/ci"
-          tar -xzf ci.tgz -C "$RUNNER_TEMP/ci"
-          chmod -R a+x "$RUNNER_TEMP/ci" || true
-          export PATH="$RUNNER_TEMP/ci:$RUNNER_TEMP/ci/bin:$PATH"
-          export LD_LIBRARY_PATH="$RUNNER_TEMP/ci:$RUNNER_TEMP/ci/lib:${LD_LIBRARY_PATH:-}"
-          BIN="$(command -v curl_chrome131 || command -v curl_chrome136 || true)"
-          if [ -z "$BIN" ]; then
-            BIN="$(find "$RUNNER_TEMP/ci" -type f \( -name 'curl_chrome131' -o -name 'curl-impersonate' \) | head -n 1)"
-          fi
-          echo "impersonate bin: ${BIN:-none}"
-          if [ -n "$BIN" ]; then
-            export PATH="$(dirname "$BIN"):$PATH"
-            export LD_LIBRARY_PATH="$(dirname "$BIN"):${LD_LIBRARY_PATH:-}"
-            "$BIN" -sSL --max-time 25 --compressed \
-              -H "Accept-Language: he-IL,he;q=0.9" \
-              -H "Accept: text/html" \
-              -o games.html "$GAMES_URL"
-            "$BIN" -sSL --max-time 25 --compressed \
-              -H "Accept-Language: he-IL,he;q=0.9" \
-              -H "Accept: text/html" \
-              -o team.html "$TEAM_URL"
-            ifa_ok && scraped=true
-          fi
-          echo "::endgroup::"
-
-          if [ "$scraped" != "true" ]; then
-            echo "::group::jina reader"
-            curl -sSL --max-time 30 \
-              -H "Accept-Language: he-IL,he;q=0.9" \
-              -H "X-Return-Format: html" \
-              -o games.html "https://r.jina.ai/${GAMES_URL}"
-            curl -sSL --max-time 30 \
-              -H "Accept-Language: he-IL,he;q=0.9" \
-              -H "X-Return-Format: html" \
-              -o team.html "https://r.jina.ai/${TEAM_URL}"
-            ifa_ok && scraped=true
-            echo "::endgroup::"
-          fi
-
-          if [ "$scraped" != "true" ]; then
-            echo "::group::playwright chromium"
-            mkdir -p "$RUNNER_TEMP/pw"
-            (
-              cd "$RUNNER_TEMP/pw"
-              npm init -y >/dev/null
-              npm install --no-fund --no-audit playwright@1.55.0
-              npx playwright install chromium --with-deps
-            )
-            cp scripts/ifa-scrape.mjs "$RUNNER_TEMP/pw/ifa-scrape.mjs"
-            ( cd "$RUNNER_TEMP/pw" && node ifa-scrape.mjs )
-            ifa_ok && scraped=true
-            echo "::endgroup::"
-          fi
-
-          if [ "$scraped" = "true" ]; then
-            echo "scraped=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "Linux scrape blocked by Cloudflare"
-            echo "scraped=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Push HTML to production
-        id: deliver
         env:
-          IFA_CRON_SECRET: ${{ secrets.IFA_CRON_SECRET }}
-          SCRAPED: ${{ steps.scrape.outputs.scraped }}
+          ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
-          if [ -z "$IFA_CRON_SECRET" ]; then
-            echo "Missing GitHub secret IFA_CRON_SECRET"
+          if [ -z "$ZENROWS_API_KEY" ]; then
+            echo "Error: ZENROWS_API_KEY secret is missing in GitHub Actions."
             exit 1
           fi
-          if [ "$SCRAPED" != "true" ]; then
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
-            exit 0
+
+          echo "Fetching games HTML via ZenRows..."
+          curl -sSL --max-time 60 "https://api.zenrows.com/v1/?apikey=${ZENROWS_API_KEY}&url=${ENC_GAMES}&antibot=true" -o games.html
+
+          echo "Fetching team HTML via ZenRows..."
+          curl -sSL --max-time 60 "https://api.zenrows.com/v1/?apikey=${ZENROWS_API_KEY}&url=${ENC_TEAM}&antibot=true" -o team.html
+
+          # ווידוא בסיסי שהקוד שחזר הוא אכן עמודי ההתאחדות ולא שגיאת חסימה
+          if grep -q "רשימת המשחקים" games.html && grep -q "מקום" team.html; then
+            echo "Scrape successful!"
+            echo "scraped=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Error: ZenRows failed to bypass Cloudflare or returned bad HTML."
+            echo "scraped=false" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
+
+      - name: Push HTML to Vercel API
+        if: steps.scrape.outputs.scraped == 'true'
+        env:
+          IFA_CRON_SECRET: ${{ secrets.IFA_CRON_SECRET }}
+        run: |
+          if [ -z "$IFA_CRON_SECRET" ]; then
+            echo "Error: IFA_CRON_SECRET secret is missing in GitHub Actions."
+            exit 1
+          fi
+          
+          # אריזת קבצי ה-HTML ל-JSON ושליחה ל-Vercel
           node -e "const fs=require('fs'); fs.writeFileSync('payload.json', JSON.stringify({ gamesHtml: fs.readFileSync('games.html','utf8'), teamHtml: fs.readFileSync('team.html','utf8') }))"
+          
           code=$(curl -sS -o body.json -w "%{http_code}" -X POST "$IFA_CRON_URL" \
             -H "Authorization: Bearer $IFA_CRON_SECRET" \
             -H "Content-Type: application/json" \
             --data-binary @payload.json)
-          echo "HTTP $code"
+            
+          echo "HTTP Response: $code"
           head -c 500 body.json; echo
-          if [ "$code" = "200" ]; then
-            echo "pushed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "pushed=false" >> "$GITHUB_OUTPUT"
+          
+          if [ "$code" != "200" ]; then
+            echo "Error: Failed to push to Vercel."
             exit 1
           fi
-
-  windows:
-    needs: linux
-    if: always() && needs.linux.outputs.pushed != 'true'
-    runs-on: windows-latest
-    timeout-minutes: 6
-    steps:
-      - name: Scrape with Windows curl
-        shell: bash
-        run: |
-          curl.exe -sSL --max-time 25 -A "$UA" \
-            -H "Accept-Language: he-IL,he;q=0.9" \
-            -H "Accept: text/html" \
-            -o games.html "$GAMES_URL"
-          curl.exe -sSL --max-time 25 -A "$UA" \
-            -H "Accept-Language: he-IL,he;q=0.9" \
-            -H "Accept: text/html" \
-            -o team.html "$TEAM_URL"
-          grep -q "רשימת המשחקים" games.html
-          grep -q "מקום" team.html
-          if grep -q "Attention Required" games.html && grep -qi cloudflare games.html; then
-            echo "Cloudflare blocked the games page"
-            exit 1
-          fi
-
-      - name: Push HTML to production
-        shell: bash
-        env:
-          IFA_CRON_SECRET: ${{ secrets.IFA_CRON_SECRET }}
-        run: |
-          if [ -z "$IFA_CRON_SECRET" ]; then
-            echo "Missing GitHub secret IFA_CRON_SECRET"
-            exit 1
-          fi
-          node -e "const fs=require('fs'); fs.writeFileSync('payload.json', JSON.stringify({ gamesHtml: fs.readFileSync('games.html','utf8'), teamHtml: fs.readFileSync('team.html','utf8') }))"
-          code=$(curl.exe -sS -o body.json -w "%{http_code}" -X POST "$IFA_CRON_URL" \
-            -H "Authorization: Bearer $IFA_CRON_SECRET" \
-            -H "Content-Type: application/json" \
-            --data-binary @payload.json)
-          echo "HTTP $code"
-          head -c 500 body.json; echo
-          test "$code" = "200"
-
-  vercel-fetch:
-    needs: [linux, windows]
-    if: always() && needs.linux.outputs.pushed != 'true' && needs.windows.result != 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 3
-    steps:
-      - name: Ask production to fetch IFA
-        env:
-          IFA_CRON_SECRET: ${{ secrets.IFA_CRON_SECRET }}
-        run: |
-          if [ -z "$IFA_CRON_SECRET" ]; then
-            echo "Missing GitHub secret IFA_CRON_SECRET"
-            exit 1
-          fi
-          code=$(curl -sS -o body.json -w "%{http_code}" "$IFA_CRON_URL" \
-            -H "Authorization: Bearer $IFA_CRON_SECRET")
-          echo "HTTP $code"
-          head -c 500 body.json; echo
-          test "$code" = "200"
