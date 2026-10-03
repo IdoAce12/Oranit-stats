@@ -6,7 +6,7 @@ import { runIfaSync } from "@/lib/ifa/sync";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-export const maxDuration = 30;
+export const maxDuration = 90;
 
 const NO_STORE = {
   "Cache-Control": "private, no-store, no-cache, must-revalidate",

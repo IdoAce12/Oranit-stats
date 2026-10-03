@@ -11,14 +11,33 @@ describe("isBlockedIfaPage", () => {
 });
 
 describe("ifaLiveScrapeEnabled", () => {
-  it("כבוי ב-Vercel כי Cloudflare חוסם משם", () => {
-    const prev = process.env.VERCEL;
+  it("כבוי ב-Vercel בלי ZenRows", () => {
+    const prevVercel = process.env.VERCEL;
+    const prevKey = process.env.ZENROWS_API_KEY;
     process.env.VERCEL = "1";
+    delete process.env.ZENROWS_API_KEY;
     try {
       expect(ifaLiveScrapeEnabled()).toBe(false);
     } finally {
-      if (prev === undefined) delete process.env.VERCEL;
-      else process.env.VERCEL = prev;
+      if (prevVercel === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = prevVercel;
+      if (prevKey === undefined) delete process.env.ZENROWS_API_KEY;
+      else process.env.ZENROWS_API_KEY = prevKey;
+    }
+  });
+
+  it("פועל ב-Vercel כשיש מפתח ZenRows לרענון ידני", () => {
+    const prevVercel = process.env.VERCEL;
+    const prevKey = process.env.ZENROWS_API_KEY;
+    process.env.VERCEL = "1";
+    process.env.ZENROWS_API_KEY = "test-key";
+    try {
+      expect(ifaLiveScrapeEnabled()).toBe(true);
+    } finally {
+      if (prevVercel === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = prevVercel;
+      if (prevKey === undefined) delete process.env.ZENROWS_API_KEY;
+      else process.env.ZENROWS_API_KEY = prevKey;
     }
   });
 });

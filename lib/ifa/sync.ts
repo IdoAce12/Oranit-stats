@@ -1,14 +1,13 @@
 import dns from "node:dns";
 import { createMatch, deleteMatch, getIfaCache, listDismissedIfaKeys, listMatches, saveIfaCache, updateMatch } from "../db";
 import { israelToday } from "../fixtures";
-import { IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL, ifaLiveScrapeEnabled } from "./config";
+import { IFA_GAMES_URL, IFA_TEAM_URL, ifaLiveScrapeEnabled } from "./config";
 import { fetchIfaHtml } from "./fetchHtml";
 import { parseIfaGames, parseIfaStandings, type IfaFixture, type IfaStandingRow } from "./parse";
 import {
   activeDismissedSet,
   collapseIfaFixtures,
   errorMessage,
-  isIfaCacheFresh,
   isMissingIfaSchema,
   planFixtureSync,
   type IfaSyncPlan,
@@ -109,9 +108,7 @@ export async function runIfaSync(
   const migrationError = "חסר חיבור להתאחדות — הרץ את db/migration_v12.sql ב-Supabase SQL Editor";
   const waitingError = "הטבלה תתעדכן אוטומטית מההתאחדות";
 
-  const skipLive =
-    !suppliedHtml &&
-    (!ifaLiveScrapeEnabled() || (!opts.force && isIfaCacheFresh(cache?.fetched_at, Date.now(), IFA_STALE_MS)));
+  const skipLive = !suppliedHtml && !(opts.force && ifaLiveScrapeEnabled());
 
   if (skipLive) {
     if (!schemaMissing && cache?.fixtures?.length) {

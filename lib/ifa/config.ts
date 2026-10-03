@@ -3,12 +3,18 @@ export const IFA_SEASON_ID = "28";
 export const IFA_GAMES_URL = `https://www.football.org.il/team-details/team-games/?team_id=${IFA_TEAM_ID}&season_id=${IFA_SEASON_ID}`;
 export const IFA_TEAM_URL = `https://www.football.org.il/team-details/?team_id=${IFA_TEAM_ID}&season_id=${IFA_SEASON_ID}`;
 export const IFA_OUR_NAME = "הפועל אורנית";
-/** אחרי עשר דקות מושכים שוב מההתאחדות. שש שעות השאירו את הטלפון עם טבלה ושעה ישנים. */
-export const IFA_STALE_MS = 10 * 60 * 1000;
+/** מטמון לטעינת מסכים. משיכה חיה רק ביומן GitHub ובכפתור רענון. */
+export const IFA_STALE_MS = 24 * 60 * 60 * 1000;
 export const IFA_FETCH_TIMEOUT_MS = process.env.VERCEL === "1" ? 8_000 : 15_000;
+export const IFA_ZENROWS_TIMEOUT_MS = 45_000;
 
-/** ב-Vercel Cloudflare חוסם. הטלפון קורא מטמון ש-GitHub+ZenRows ממלאים. */
+export function zenrowsApiKey(): string {
+  return (process.env.ZENROWS_API_KEY ?? "").trim();
+}
+
+/** משיכה חיה: ZenRows בפרודקשן, או curl מקומי. לא רצים על כל כניסה לאפליקציה. */
 export function ifaLiveScrapeEnabled(): boolean {
+  if (zenrowsApiKey()) return true;
   return process.env.VERCEL !== "1";
 }
 

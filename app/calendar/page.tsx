@@ -42,7 +42,7 @@ export default function CalendarPage() {
         } catch {
           if (!cancelled) setTrainings([]);
         }
-        const result = await requestIfaSync(true);
+        const result = await requestIfaSync(false);
         if (cancelled) return;
         if (result) {
           setStandings(result.standings ?? []);

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { IFA_FETCH_HEADERS, IFA_FETCH_TIMEOUT_MS } from "./config";
+import { IFA_FETCH_HEADERS, IFA_FETCH_TIMEOUT_MS, IFA_ZENROWS_TIMEOUT_MS, zenrowsApiKey } from "./config";
 
 export function isBlockedIfaPage(html: string, status = 200): boolean {
   if (status === 403 || status === 503) return true;
@@ -93,16 +93,34 @@ async function fetchIfaHtmlViaProxies(url: string, timeoutMs: number): Promise<s
   throw new Error("ההתאחדות חסמה את הבקשה");
 }
 
+async function fetchIfaHtmlViaZenRows(url: string, timeoutMs: number): Promise<string | null> {
+  const key = zenrowsApiKey();
+  if (!key) return null;
+  const href = new URL("https://api.zenrows.com/v1/");
+  href.searchParams.set("apikey", key);
+  href.searchParams.set("url", url);
+  href.searchParams.set("js_render", "true");
+  href.searchParams.set("premium_proxy", "true");
+  href.searchParams.set("proxy_country", "il");
+  href.searchParams.set("wait", "5000");
+  return fetchWithTimeout(href.toString(), {}, timeoutMs);
+}
+
 export async function fetchIfaHtml(url: string): Promise<string> {
   if (typeof window === "undefined" && process.env.VERCEL !== "1") {
     process.env.NODE_TLS_REJECT_UNAUTHORIZED ??= "0";
+  }
+  const fromZen = await fetchIfaHtmlViaZenRows(url, IFA_ZENROWS_TIMEOUT_MS);
+  if (fromZen) return fromZen;
+  if (process.env.VERCEL === "1") {
+    throw new Error("ההתאחדות חסמה את הבקשה");
   }
   const fromFetch = await fetchWithTimeout(url, IFA_FETCH_HEADERS, IFA_FETCH_TIMEOUT_MS);
   if (fromFetch) return fromFetch;
   try {
     return await fetchIfaHtmlViaCurl(url, IFA_FETCH_TIMEOUT_MS);
   } catch {
-    /* Vercel Linux often has no usable curl, or Cloudflare still blocks it */
+    /* Node/undici לעתים נחסם ב-Cloudflare; curl במחשב המקומי עובר */
   }
   return fetchIfaHtmlViaProxies(url, IFA_FETCH_TIMEOUT_MS);
 }
