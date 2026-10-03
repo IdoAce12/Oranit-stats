@@ -7,6 +7,11 @@ export const IFA_OUR_NAME = "הפועל אורנית";
 export const IFA_STALE_MS = 10 * 60 * 1000;
 export const IFA_FETCH_TIMEOUT_MS = process.env.VERCEL === "1" ? 8_000 : 15_000;
 
+/** ב-Vercel Cloudflare חוסם. הטלפון קורא מטמון ש-GitHub+ZenRows ממלאים. */
+export function ifaLiveScrapeEnabled(): boolean {
+  return process.env.VERCEL !== "1";
+}
+
 export const IFA_FETCH_HEADERS: Record<string, string> = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",

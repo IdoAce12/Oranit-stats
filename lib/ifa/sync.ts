@@ -1,7 +1,7 @@
 import dns from "node:dns";
 import { createMatch, deleteMatch, getIfaCache, listDismissedIfaKeys, listMatches, saveIfaCache, updateMatch } from "../db";
 import { israelToday } from "../fixtures";
-import { IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL } from "./config";
+import { IFA_GAMES_URL, IFA_STALE_MS, IFA_TEAM_URL, ifaLiveScrapeEnabled } from "./config";
 import { fetchIfaHtml } from "./fetchHtml";
 import { parseIfaGames, parseIfaStandings, type IfaFixture, type IfaStandingRow } from "./parse";
 import {
@@ -106,9 +106,15 @@ export async function runIfaSync(
 
   const today = israelToday();
   const activeDismissed = [...activeDismissedSet(dismissedKeys, today)];
+  const migrationError = "חסר חיבור להתאחדות — הרץ את db/migration_v12.sql ב-Supabase SQL Editor";
+  const waitingError = "הטבלה תתעדכן אוטומטית מההתאחדות";
 
-  if (!schemaMissing && !opts.force && isIfaCacheFresh(cache?.fetched_at, Date.now(), IFA_STALE_MS)) {
-    if (cache?.fixtures?.length) {
+  const skipLive =
+    !suppliedHtml &&
+    (!ifaLiveScrapeEnabled() || (!opts.force && isIfaCacheFresh(cache?.fetched_at, Date.now(), IFA_STALE_MS)));
+
+  if (skipLive) {
+    if (!schemaMissing && cache?.fixtures?.length) {
       try {
         const existing = await listMatches();
         const plan = planFixtureSync(existing, cache.fixtures, dismissedKeys, today);
@@ -120,16 +126,18 @@ export async function runIfaSync(
           updated: plan.updates.length,
           skipped: plan.skipped,
           deleted: plan.deletes.length,
+          error: schemaMissing ? migrationError : undefined,
         });
       } catch (e) {
         console.error("ifa cache apply", e);
         return fromCache(cache, { dismissedKeys: activeDismissed });
       }
     }
-    return fromCache(cache, { dismissedKeys: activeDismissed });
+    return fromCache(cache, {
+      dismissedKeys: activeDismissed,
+      error: schemaMissing ? migrationError : cache ? undefined : waitingError,
+    });
   }
-
-  const migrationError = "חסר חיבור להתאחדות — הרץ את db/migration_v12.sql ב-Supabase SQL Editor";
 
   try {
     const gamesHtml = opts.gamesHtml?.trim() ? opts.gamesHtml : await fetchIfaHtml(IFA_GAMES_URL);
@@ -193,13 +201,21 @@ export async function runIfaSync(
           updated: plan.updates.length,
           skipped: plan.skipped,
           deleted: plan.deletes.length,
-          error: schemaMissing ? migrationError : msg,
+          error: schemaMissing ? migrationError : undefined,
         });
       } catch (applyErr) {
         console.error("ifa cache apply after fetch fail", applyErr);
       }
     }
-    if (cache) return fromCache(cache, { dismissedKeys: activeDismissed, error: schemaMissing ? migrationError : msg });
-    return fromCache(null, { dismissedKeys: activeDismissed, error: schemaMissing ? migrationError : msg });
+    if (cache) {
+      return fromCache(cache, {
+        dismissedKeys: activeDismissed,
+        error: schemaMissing ? migrationError : undefined,
+      });
+    }
+    return fromCache(null, {
+      dismissedKeys: activeDismissed,
+      error: schemaMissing ? migrationError : msg,
+    });
   }
 }

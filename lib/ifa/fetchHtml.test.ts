@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ifaLiveScrapeEnabled } from "./config";
 import { isBlockedIfaPage, looksLikeIfaHtml } from "./fetchHtml";
 
 describe("isBlockedIfaPage", () => {
@@ -6,6 +7,19 @@ describe("isBlockedIfaPage", () => {
     expect(isBlockedIfaPage("<title>Attention Required! | Cloudflare</title>", 200)).toBe(true);
     expect(isBlockedIfaPage("<html>רשימת המשחקים</html>", 200)).toBe(false);
     expect(isBlockedIfaPage("hello", 403)).toBe(true);
+  });
+});
+
+describe("ifaLiveScrapeEnabled", () => {
+  it("כבוי ב-Vercel כי Cloudflare חוסם משם", () => {
+    const prev = process.env.VERCEL;
+    process.env.VERCEL = "1";
+    try {
+      expect(ifaLiveScrapeEnabled()).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = prev;
+    }
   });
 });
 
