@@ -7,14 +7,13 @@ on:
 
 env:
   IFA_CRON_URL: https://oranit-stats.vercel.app/api/ifa/cron
-  # הכתובות המקודדות של עמודי ההתאחדות כדי ש-ZenRows יוכל לעבד אותן
-  ENC_GAMES: "https%3A%2F%2Fwww.football.org.il%2Fteam-details%2Fteam-games%2F%3Fteam_id%3D2735%26season_id%3D28"
-  ENC_TEAM: "https%3A%2F%2Fwww.football.org.il%2Fteam-details%2F%3Fteam_id%3D2735%26season_id%3D28"
+  GAMES_URL: https://www.football.org.il/team-details/team-games/?team_id=2735&season_id=28
+  TEAM_URL: https://www.football.org.il/team-details/?team_id=2735&season_id=28
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
 
@@ -28,15 +27,41 @@ jobs:
             exit 1
           fi
 
+          fetch_ifa() {
+            local dest="$1"
+            local target="$2"
+            curl -sS --max-time 90 -G "https://api.zenrows.com/v1/" \
+              --data-urlencode "apikey=${ZENROWS_API_KEY}" \
+              --data-urlencode "url=${target}" \
+              --data-urlencode "js_render=true" \
+              --data-urlencode "premium_proxy=true" \
+              --data-urlencode "proxy_country=il" \
+              --data-urlencode "wait=5000" \
+              -o "$dest" \
+              -w "%{http_code}"
+          }
+
           echo "Fetching games HTML via ZenRows..."
-          curl -sSL --max-time 60 "https://api.zenrows.com/v1/?apikey=${ZENROWS_API_KEY}&url=${ENC_GAMES}&antibot=true" -o games.html
-
+          games_code=$(fetch_ifa games.html "$GAMES_URL")
           echo "Fetching team HTML via ZenRows..."
-          curl -sSL --max-time 60 "https://api.zenrows.com/v1/?apikey=${ZENROWS_API_KEY}&url=${ENC_TEAM}&antibot=true" -o team.html
+          team_code=$(fetch_ifa team.html "$TEAM_URL")
+          echo "ZenRows HTTP games=${games_code} team=${team_code}"
+          echo "games bytes=$(wc -c < games.html) team bytes=$(wc -c < team.html)"
 
-          # ווידוא בסיסי שהקוד שחזר הוא אכן עמודי ההתאחדות ולא שגיאת חסימה
-          if grep -q "רשימת המשחקים" games.html && grep -q "מקום" team.html; then
-            echo "Scrape successful!"
+          if node <<'NODE'
+            const fs = require("fs");
+            const g = fs.readFileSync("games.html", "utf8");
+            const t = fs.readFileSync("team.html", "utf8");
+            const gamesOk = g.includes("רשימת המשחקים") || (g.includes("table_row link_url") && g.includes("game_id="));
+            const teamOk = t.includes('sr-only">מקום') || (t.includes("table_row") && t.includes("team_id="));
+            if (!gamesOk || !teamOk) {
+              console.log("games starts:", g.slice(0, 500));
+              console.log("team starts:", t.slice(0, 500));
+              process.exit(1);
+            }
+            console.log("Scrape successful!");
+          NODE
+          then
             echo "scraped=true" >> "$GITHUB_OUTPUT"
           else
             echo "Error: ZenRows failed to bypass Cloudflare or returned bad HTML."
@@ -53,18 +78,17 @@ jobs:
             echo "Error: IFA_CRON_SECRET secret is missing in GitHub Actions."
             exit 1
           fi
-          
-          # אריזת קבצי ה-HTML ל-JSON ושליחה ל-Vercel
+
           node -e "const fs=require('fs'); fs.writeFileSync('payload.json', JSON.stringify({ gamesHtml: fs.readFileSync('games.html','utf8'), teamHtml: fs.readFileSync('team.html','utf8') }))"
-          
+
           code=$(curl -sS -o body.json -w "%{http_code}" -X POST "$IFA_CRON_URL" \
             -H "Authorization: Bearer $IFA_CRON_SECRET" \
             -H "Content-Type: application/json" \
             --data-binary @payload.json)
-            
+
           echo "HTTP Response: $code"
           head -c 500 body.json; echo
-          
+
           if [ "$code" != "200" ]; then
             echo "Error: Failed to push to Vercel."
             exit 1
