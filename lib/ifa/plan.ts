@@ -254,6 +254,23 @@ export function isIfaCacheFresh(fetchedAt: string | null | undefined, now = Date
   return now - t < staleMs;
 }
 
+export function israelCalendarDate(at: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+}
+
+/** משיכה אחת ליום שעון ישראל — גם אם GitHub מאחר את ה-cron. */
+export function ifaAlreadySyncedToday(fetchedAt: string | null | undefined, now = new Date()): boolean {
+  if (!fetchedAt) return false;
+  const fetched = new Date(fetchedAt);
+  if (Number.isNaN(fetched.getTime())) return false;
+  return israelCalendarDate(fetched) === israelCalendarDate(now);
+}
+
 export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (typeof e === "string") return e;

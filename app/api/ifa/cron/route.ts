@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getIfaCache } from "@/lib/db";
 import { cronAuthorized, cronSecret } from "@/lib/ifa/cronAuth";
-import { errorMessage } from "@/lib/ifa/plan";
+import { errorMessage, ifaAlreadySyncedToday } from "@/lib/ifa/plan";
 import { runIfaSync } from "@/lib/ifa/sync";
 
 export const dynamic = "force-dynamic";
@@ -25,6 +26,11 @@ function unauthorized() {
 export async function GET(request: NextRequest) {
   if (!cronAuthorized(request.headers.get("authorization"))) return unauthorized();
   try {
+    if (request.nextUrl.searchParams.get("peek") === "1") {
+      const cache = await getIfaCache();
+      const fetchedAt = cache?.fetched_at ?? null;
+      return json({ fetchedAt, alreadySyncedToday: ifaAlreadySyncedToday(fetchedAt) });
+    }
     const result = await runIfaSync({ force: true });
     return json(result);
   } catch (e) {

@@ -2,8 +2,10 @@ name: IFA sync
 
 on:
   schedule:
-    # 07:00 שעון ישראל (04:00 UTC)
+    # בוקר — GitHub לרוב מאחר בכמה שעות
     - cron: "0 4 * * *"
+    # גיבוי אחה״צ אם הבוקר פספס; מדלגים אם כבר נמשך היום
+    - cron: "0 14 * * *"
   workflow_dispatch:
 
 env:
@@ -18,8 +20,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Skip if already synced today
+        id: gate
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          IFA_CRON_SECRET: ${{ secrets.IFA_CRON_SECRET }}
+        run: |
+          if [ -z "$IFA_CRON_SECRET" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          code=$(curl -sS -o peek.json -w "%{http_code}" "$IFA_CRON_URL?peek=1" \
+            -H "Authorization: Bearer $IFA_CRON_SECRET")
+          echo "peek HTTP $code"
+          head -c 300 peek.json; echo
+          if [ "$code" != "200" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if node -e 'const d=require("./peek.json"); process.exit(d.alreadySyncedToday ? 0 : 1)'; then
+            echo "Already synced today (Israel). Skipping scrape."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Scrape football.org.il via ZenRows
         id: scrape
+        if: steps.gate.outputs.skip != 'true'
         env:
           ZENROWS_API_KEY: ${{ secrets.ZENROWS_API_KEY }}
         run: |
@@ -71,7 +99,7 @@ jobs:
           fi
 
       - name: Push HTML to Vercel API
-        if: steps.scrape.outputs.scraped == 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.scrape.outputs.scraped == 'true'
         env:
           IFA_CRON_SECRET: ${{ secrets.IFA_CRON_SECRET }}
         run: |

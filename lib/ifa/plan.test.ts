@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeMatch } from "../testHelpers";
 import { ifaMatchKey, type IfaFixture } from "./parse";
-import { collapseIfaFixtures, findExistingIfaMatch, isActiveDismissedKey, isIfaCacheFresh, planFixtureSync } from "./plan";
+import { collapseIfaFixtures, findExistingIfaMatch, ifaAlreadySyncedToday, isActiveDismissedKey, isIfaCacheFresh, planFixtureSync } from "./plan";
 
 function fixture(overrides: Partial<IfaFixture> = {}): IfaFixture {
   return {
@@ -222,6 +222,15 @@ describe("isActiveDismissedKey", () => {
   it("מתעלם ממחיקה של משחק שתאריכו עוד לא הגיע", () => {
     expect(isActiveDismissedKey("2026-09-28|מכבי השרון נתניה", "2026-09-26")).toBe(false);
     expect(isActiveDismissedKey("2026-09-20|ביתר טוברוק", "2026-09-26")).toBe(true);
+  });
+});
+
+describe("ifaAlreadySyncedToday", () => {
+  it("סופר משיכה לפי תאריך ישראל לא לפי UTC", () => {
+    const morningIsrael = new Date("2026-10-07T07:00:00+03:00");
+    expect(ifaAlreadySyncedToday("2026-10-07T04:20:00.000Z", morningIsrael)).toBe(true);
+    expect(ifaAlreadySyncedToday("2026-10-06T10:50:47.000Z", morningIsrael)).toBe(false);
+    expect(ifaAlreadySyncedToday(null, morningIsrael)).toBe(false);
   });
 });
 
