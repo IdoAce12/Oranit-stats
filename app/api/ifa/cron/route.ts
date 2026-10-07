@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getIfaCache } from "@/lib/db";
+import { getIfaCache, getIfaRefreshRequestedAt } from "@/lib/db";
 import { cronAuthorized, cronSecret } from "@/lib/ifa/cronAuth";
-import { errorMessage, ifaAlreadySyncedToday } from "@/lib/ifa/plan";
+import { errorMessage, ifaAlreadySyncedToday, ifaRefreshPending } from "@/lib/ifa/plan";
 import { runIfaSync } from "@/lib/ifa/sync";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,13 @@ export async function GET(request: NextRequest) {
     if (request.nextUrl.searchParams.get("peek") === "1") {
       const cache = await getIfaCache();
       const fetchedAt = cache?.fetched_at ?? null;
-      return json({ fetchedAt, alreadySyncedToday: ifaAlreadySyncedToday(fetchedAt) });
+      const refreshRequestedAt = await getIfaRefreshRequestedAt();
+      return json({
+        fetchedAt,
+        alreadySyncedToday: ifaAlreadySyncedToday(fetchedAt),
+        refreshRequestedAt,
+        refreshPending: ifaRefreshPending(fetchedAt, refreshRequestedAt),
+      });
     }
     const result = await runIfaSync({ force: true });
     return json(result);

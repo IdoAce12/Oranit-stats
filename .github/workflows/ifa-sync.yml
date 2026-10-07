@@ -6,7 +6,13 @@ on:
     - cron: "0 4 * * *"
     # גיבוי אחה״צ אם הבוקר פספס; מדלגים אם כבר נמשך היום
     - cron: "0 14 * * *"
+    # קולט לחיצת רענון באפליקציה (מדלג אם אין בקשה)
+    - cron: "*/5 * * * *"
   workflow_dispatch:
+
+concurrency:
+  group: ifa-sync
+  cancel-in-progress: false
 
 env:
   IFA_CRON_URL: https://oranit-stats.vercel.app/api/ifa/cron
@@ -38,8 +44,8 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if node -e 'const d=require("./peek.json"); process.exit(d.alreadySyncedToday ? 0 : 1)'; then
-            echo "Already synced today (Israel). Skipping scrape."
+          if node -e 'const d=require("./peek.json"); const skip = Boolean(d.alreadySyncedToday) && !d.refreshPending; process.exit(skip ? 0 : 1)'; then
+            echo "Already synced today and no refresh pending. Skipping scrape."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"

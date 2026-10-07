@@ -9,6 +9,10 @@ import { LeagueTable } from "../components/LeagueTable";
 import { SeasonKingsBoard } from "../components/SeasonKings";
 import { PageSkeleton } from "../components/Skeleton";
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export default function TablePage() {
   const [standings, setStandings] = useState<IfaStandingRow[]>([]);
   const [fetchedAt, setFetchedAt] = useState<string | null>(null);
@@ -16,26 +20,41 @@ export default function TablePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const load = async (fresh: boolean) => {
+  const apply = async (fresh: boolean) => {
     const result = await requestIfaSync(fresh);
-    if (!result) {
-      setError("לא הצלחנו לטעון את הטבלה מההתאחדות");
-      return;
-    }
+    if (!result) return { ok: false as const, refreshStarted: false, fetchedAt: null as string | null };
     if ((result.standings?.length ?? 0) > 0 || !result.error) {
       setStandings(result.standings ?? []);
     }
-    setFetchedAt(result.fetchedAt ?? null);
+    if (result.fetchedAt) setFetchedAt(result.fetchedAt);
     setError(result.error ?? null);
+    return {
+      ok: true as const,
+      refreshStarted: Boolean(result.refreshStarted),
+      fetchedAt: result.fetchedAt ?? null,
+    };
   };
 
   useEffect(() => {
-    void load(false).finally(() => setLoading(false));
+    void apply(false).finally(() => setLoading(false));
   }, []);
 
   const refresh = async () => {
     setRefreshing(true);
-    await load(true);
+    setError(null);
+    const first = await apply(true);
+    if (first.refreshStarted) {
+      const before = first.fetchedAt;
+      for (let i = 0; i < 24; i++) {
+        await sleep(5000);
+        const next = await apply(false);
+        if (next.fetchedAt && before && next.fetchedAt > before) break;
+        if (next.fetchedAt && !before) break;
+      }
+    }
+    if (!first.ok && standings.length === 0) {
+      setError("לא הצלחנו לטעון את הטבלה מההתאחדות");
+    }
     setRefreshing(false);
   };
 
@@ -54,7 +73,7 @@ export default function TablePage() {
             onClick={() => void refresh()}
             className="btn btn-ghost h-9 px-3 text-xs disabled:opacity-50"
           >
-            {refreshing ? "..." : "רענון"}
+            {refreshing ? "מושך..." : "רענון"}
           </button>
         }
       />
@@ -83,9 +102,11 @@ export default function TablePage() {
       <p className="mt-3 text-[11px] text-[var(--muted-2)]">
         {error
           ? error
-          : syncedAt
-            ? `עודכן מההתאחדות · ${syncedAt}`
-            : "נפתח את הדף — נמשכת הטבלה העדכנית מהאתר"}
+          : refreshing
+            ? "מושך מההתאחדות..."
+            : syncedAt
+              ? `עודכן מההתאחדות · ${syncedAt}`
+              : "נפתח את הדף — נמשכת הטבלה העדכנית מהאתר"}
         {" · "}
         <a href={IFA_TEAM_URL} target="_blank" rel="noreferrer" className="underline underline-offset-2">
           לאתר ההתאחדות

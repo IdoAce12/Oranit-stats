@@ -271,6 +271,19 @@ export function ifaAlreadySyncedToday(fetchedAt: string | null | undefined, now 
   return israelCalendarDate(fetched) === israelCalendarDate(now);
 }
 
+export function ifaRefreshPending(
+  fetchedAt: string | null | undefined,
+  refreshRequestedAt: string | null | undefined
+): boolean {
+  if (!refreshRequestedAt) return false;
+  const requested = Date.parse(refreshRequestedAt);
+  if (!Number.isFinite(requested)) return false;
+  if (!fetchedAt) return true;
+  const got = Date.parse(fetchedAt);
+  if (!Number.isFinite(got)) return true;
+  return requested > got;
+}
+
 export function errorMessage(e: unknown): string {
   if (e instanceof Error) return e.message;
   if (typeof e === "string") return e;
@@ -293,4 +306,5 @@ export interface IfaSyncResult {
   refreshed: boolean;
   dismissedKeys: string[];
   error?: string;
+  refreshStarted?: boolean;
 }

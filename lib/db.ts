@@ -181,6 +181,24 @@ export async function saveIfaCache(input: {
   if (error) throw error;
 }
 
+export async function markIfaRefreshRequested(): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("ifa_cache").upsert({
+    id: "refresh",
+    standings: [],
+    fixtures: [],
+    fetched_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+}
+
+export async function getIfaRefreshRequestedAt(): Promise<string | null> {
+  const supabase = requireClient();
+  const { data, error } = await supabase.from("ifa_cache").select("fetched_at").eq("id", "refresh").maybeSingle();
+  if (error) throw error;
+  return (data?.fetched_at as string | undefined) ?? null;
+}
+
 const IFA_DISMISSED_ID = "dismissed";
 
 function parseDismissedKeys(raw: unknown): string[] {

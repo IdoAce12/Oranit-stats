@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeMatch } from "../testHelpers";
 import { ifaMatchKey, type IfaFixture } from "./parse";
-import { collapseIfaFixtures, findExistingIfaMatch, ifaAlreadySyncedToday, isActiveDismissedKey, isIfaCacheFresh, planFixtureSync } from "./plan";
+import { collapseIfaFixtures, findExistingIfaMatch, ifaAlreadySyncedToday, ifaRefreshPending, isActiveDismissedKey, isIfaCacheFresh, planFixtureSync } from "./plan";
 
 function fixture(overrides: Partial<IfaFixture> = {}): IfaFixture {
   return {
@@ -222,6 +222,15 @@ describe("isActiveDismissedKey", () => {
   it("מתעלם ממחיקה של משחק שתאריכו עוד לא הגיע", () => {
     expect(isActiveDismissedKey("2026-09-28|מכבי השרון נתניה", "2026-09-26")).toBe(false);
     expect(isActiveDismissedKey("2026-09-20|ביתר טוברוק", "2026-09-26")).toBe(true);
+  });
+});
+
+describe("ifaRefreshPending", () => {
+  it("ממתין למשיכה אם ביקשו רענון אחרי הקאש", () => {
+    expect(ifaRefreshPending("2026-10-07T10:00:00.000Z", "2026-10-07T10:05:00.000Z")).toBe(true);
+    expect(ifaRefreshPending("2026-10-07T10:10:00.000Z", "2026-10-07T10:05:00.000Z")).toBe(false);
+    expect(ifaRefreshPending(null, "2026-10-07T10:05:00.000Z")).toBe(true);
+    expect(ifaRefreshPending("2026-10-07T10:00:00.000Z", null)).toBe(false);
   });
 });
 
