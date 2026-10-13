@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { baseMinute, clockDisplay, elapsedSeconds, type ClockState } from "./matchClock";
+import { baseMinute, clockDisplay, elapsedSeconds, freezeClock, type ClockState } from "./matchClock";
 
 describe("baseMinute", () => {
   it("מחצית ראשונה מתחילה ב-0, שנייה ב-45", () => {
@@ -29,5 +29,16 @@ describe("clockDisplay", () => {
     expect(d.minute).toBe(45 + 2); // 47
     expect(d.seconds).toBe(5);
     expect(d.running).toBe(false);
+  });
+});
+
+describe("freezeClock", () => {
+  it("עוצר שעון רץ על הזמן שחלף באותו רגע", () => {
+    const now = 1_000_000;
+    const state: ClockState = { half: 2, accumulated: 120, startedAt: now - 10_000 };
+    const frozen = freezeClock(state, now);
+    expect(frozen.startedAt).toBeNull();
+    expect(frozen.accumulated).toBe(130);
+    expect(clockDisplay(frozen, now + 60_000).minute).toBe(47);
   });
 });

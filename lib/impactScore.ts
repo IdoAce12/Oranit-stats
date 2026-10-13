@@ -1,3 +1,4 @@
+import { addGkCount } from "./gk";
 import { ActionType, Match, MatchEvent, Player, SquadPlayer, Substitution, Zone } from "./types";
 import { computePlayingMinutes, resolveFinalMinute } from "./playingMinutes";
 import { playerKeyOf, playerMatchesKey } from "./playerKey";
@@ -31,6 +32,16 @@ export const IMPACT_WEIGHTS = {
   aerial_lost: -1,
   ground_won: 1,
   ground_lost: -1,
+  gk_save: 1.5,
+  gk_pass_ok: 0.5,
+  gk_pass_miss: -0.5,
+  gk_aerial_ok: 1,
+  gk_aerial_miss: -0.5,
+  gk_exit_ok: 1,
+  gk_exit_bad: -1,
+  gk_accurate_pass: 0.5,
+  gk_aerial: 1,
+  gk_exit: 1,
 };
 
 export function scoreForEvent(event: MatchEvent): number {
@@ -60,6 +71,23 @@ export function scoreForEvent(event: MatchEvent): number {
       return IMPACT_WEIGHTS.ground_won;
     case "ground_lost":
       return IMPACT_WEIGHTS.ground_lost;
+    case "gk_save":
+      return IMPACT_WEIGHTS.gk_save;
+    case "gk_pass_ok":
+    case "gk_accurate_pass":
+      return IMPACT_WEIGHTS.gk_pass_ok;
+    case "gk_pass_miss":
+      return IMPACT_WEIGHTS.gk_pass_miss;
+    case "gk_aerial_ok":
+    case "gk_aerial":
+      return IMPACT_WEIGHTS.gk_aerial_ok;
+    case "gk_aerial_miss":
+      return IMPACT_WEIGHTS.gk_aerial_miss;
+    case "gk_exit_ok":
+    case "gk_exit":
+      return IMPACT_WEIGHTS.gk_exit_ok;
+    case "gk_exit_bad":
+      return IMPACT_WEIGHTS.gk_exit_bad;
     default:
       return 0;
   }
@@ -89,6 +117,16 @@ const BREAKDOWN_LABELS: Record<string, string> = {
   aerial_lost: "מאבקי אוויר — הפסד",
   ground_won: "מאבקי קרקע — זכייה",
   ground_lost: "מאבקי קרקע — הפסד",
+  gk_save: "הדיפת מפתח",
+  gk_pass_ok: "מסירה · הגיע",
+  gk_pass_miss: "מסירה · לא הגיע",
+  gk_aerial_ok: "כדור גובה · הגיע",
+  gk_aerial_miss: "כדור גובה · לא הגיע",
+  gk_exit_ok: "יציאה · טובה",
+  gk_exit_bad: "יציאה · לא טובה",
+  gk_accurate_pass: "מסירה · הגיע",
+  gk_aerial: "כדור גובה · הגיע",
+  gk_exit: "יציאה · טובה",
 };
 
 function breakdownKey(event: MatchEvent): string | null {
@@ -100,6 +138,16 @@ function breakdownKey(event: MatchEvent): string | null {
     case "aerial_lost":
     case "ground_won":
     case "ground_lost":
+    case "gk_save":
+    case "gk_pass_ok":
+    case "gk_pass_miss":
+    case "gk_aerial_ok":
+    case "gk_aerial_miss":
+    case "gk_exit_ok":
+    case "gk_exit_bad":
+    case "gk_accurate_pass":
+    case "gk_aerial":
+    case "gk_exit":
       return event.action_type;
     case "tackle":
       return `tackle_${event.zone ?? "mid"}`;
@@ -169,6 +217,16 @@ function emptyCounts(): Record<ActionType, number> {
     aerial_lost: 0,
     ground_won: 0,
     ground_lost: 0,
+    gk_save: 0,
+    gk_pass_ok: 0,
+    gk_pass_miss: 0,
+    gk_exit_ok: 0,
+    gk_exit_bad: 0,
+    gk_aerial_ok: 0,
+    gk_aerial_miss: 0,
+    gk_accurate_pass: 0,
+    gk_aerial: 0,
+    gk_exit: 0,
   };
 }
 
@@ -260,6 +318,13 @@ export interface SeasonImpact {
   defTackles: number;
   midTackles: number;
   attTackles: number;
+  gkSaves: number;
+  gkPassOk: number;
+  gkPassMiss: number;
+  gkAerialOk: number;
+  gkAerialMiss: number;
+  gkExitOk: number;
+  gkExitBad: number;
   perMatch: number;
 }
 
@@ -326,6 +391,13 @@ export function computeSeasonImpact(
         defTackles: 0,
         midTackles: 0,
         attTackles: 0,
+        gkSaves: 0,
+        gkPassOk: 0,
+        gkPassMiss: 0,
+        gkAerialOk: 0,
+        gkAerialMiss: 0,
+        gkExitOk: 0,
+        gkExitBad: 0,
         perMatch: 0,
       });
     }
@@ -381,6 +453,7 @@ export function computeSeasonImpact(
     if (ev.action_type === "aerial_lost") entry.aerialLost += 1;
     if (ev.action_type === "ground_won") entry.groundWon += 1;
     if (ev.action_type === "ground_lost") entry.groundLost += 1;
+    addGkCount(entry, ev.action_type);
   }
 
   for (const [key, matches] of matchesByKey) {
@@ -465,6 +538,13 @@ export interface PlayerMatchLine {
   aerialLost: number;
   groundWon: number;
   groundLost: number;
+  gkSaves: number;
+  gkPassOk: number;
+  gkPassMiss: number;
+  gkAerialOk: number;
+  gkAerialMiss: number;
+  gkExitOk: number;
+  gkExitBad: number;
   score: number;
 }
 
@@ -500,6 +580,13 @@ export function computePlayerSeasonMatches(
         aerialLost: 0,
         groundWon: 0,
         groundLost: 0,
+        gkSaves: 0,
+        gkPassOk: 0,
+        gkPassMiss: 0,
+        gkAerialOk: 0,
+        gkAerialMiss: 0,
+        gkExitOk: 0,
+        gkExitBad: 0,
         score: 0,
       });
     }
@@ -526,6 +613,13 @@ export function computePlayerSeasonMatches(
         aerialLost: 0,
         groundWon: 0,
         groundLost: 0,
+        gkSaves: 0,
+        gkPassOk: 0,
+        gkPassMiss: 0,
+        gkAerialOk: 0,
+        gkAerialMiss: 0,
+        gkExitOk: 0,
+        gkExitBad: 0,
         score: 0,
       };
       byMatch.set(ev.match_id, line);
@@ -544,6 +638,7 @@ export function computePlayerSeasonMatches(
     if (ev.action_type === "aerial_lost") line.aerialLost += 1;
     if (ev.action_type === "ground_won") line.groundWon += 1;
     if (ev.action_type === "ground_lost") line.groundLost += 1;
+    addGkCount(line, ev.action_type);
   }
 
   return Array.from(byMatch.values()).sort((a, b) =>

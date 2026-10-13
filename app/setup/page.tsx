@@ -7,9 +7,19 @@ import { LineupPitch } from "../components/LineupPitch";
 import { AppHeader } from "../components/AppHeader";
 import { ConfigBanner } from "../components/ConfigBanner";
 import { PageSkeleton } from "../components/Skeleton";
-import { addPlayers, createMatch, getMatch, listSquad, startMatch } from "@/lib/db";
+import { addPlayers, createMatch, getMatch, listSquad, startMatch, updateMatch } from "@/lib/db";
 import { toKickoffIso } from "@/lib/fixtures";
-import { DEFAULT_FORMATION_ID, FORMATIONS, FormationId, formationById, LINEUP_SIZE, PitchOccupant } from "@/lib/formation";
+import {
+  DEFAULT_FORMATION_ID,
+  FORMATIONS,
+  FormationId,
+  formationById,
+  LINEUP_SIZE,
+  parseFormationId,
+  PitchOccupant,
+  writeSavedFormation,
+} from "@/lib/formation";
+import { isGoalkeeper, MAX_GK_STARTERS } from "@/lib/gk";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { MATCH_TYPE_FULL_LABELS, MATCH_TYPE_ORDER, MatchType, SquadPlayer } from "@/lib/types";
@@ -90,6 +100,8 @@ function SetupInner() {
       if (m.match_date) setMatchDate(m.match_date.slice(0, 10));
       if (m.our_team_name) setTeamName(m.our_team_name);
       if (m.match_type) setMatchType(m.match_type);
+      const saved = parseFormationId(m.formation_id);
+      if (saved) setFormationId(saved);
       if (m.kickoff_at) {
         const d = new Date(m.kickoff_at);
         if (!Number.isNaN(d.getTime())) {
@@ -111,7 +123,9 @@ function SetupInner() {
     [selectedSquad, sel]
   );
   const starterCount = xiSquad.length;
-  const placedCount = slots.filter(Boolean).length;
+  const fieldXi = useMemo(() => xiSquad.filter((p) => !isGoalkeeper(p.position)), [xiSquad]);
+  const gkXi = useMemo(() => xiSquad.filter((p) => isGoalkeeper(p.position)), [xiSquad]);
+  const placedCount = slots.filter(Boolean).length + gkXi.length;
 
   const occupants = useMemo((): (PitchOccupant | null)[] => {
     return slots.map((id) => {
@@ -128,11 +142,11 @@ function SetupInner() {
 
   const onPitchIds = useMemo(() => new Set(slots.filter(Boolean) as string[]), [slots]);
   const unplacedXi = useMemo(
-    () => xiSquad.filter((p) => !onPitchIds.has(p.id)),
-    [xiSquad, onPitchIds]
+    () => fieldXi.filter((p) => !onPitchIds.has(p.id)),
+    [fieldXi, onPitchIds]
   );
   const matchBenchCount = selectedCount - starterCount;
-  const allXiPlaced = starterCount > 0 && unplacedXi.length === 0;
+  const allXiPlaced = fieldXi.length > 0 && unplacedXi.length === 0 && (gkXi.length <= MAX_GK_STARTERS);
 
   const toggle = (id: string) =>
     setSel((prev) => ({
@@ -149,7 +163,14 @@ function SetupInner() {
       setError(null);
       return;
     }
-    if (starterCount >= MAX_STARTERS) {
+    const player = squad.find((p) => p.id === id);
+    const gk = isGoalkeeper(player?.position);
+    if (gk) {
+      if (gkXi.length >= MAX_GK_STARTERS) {
+        setError("שוער אחד בהרכב הפותח");
+        return;
+      }
+    } else if (fieldXi.length >= MAX_STARTERS) {
       setError(`אפשר לבחור עד ${MAX_STARTERS} שחקני שדה בהרכב הפותח`);
       return;
     }
@@ -226,8 +247,11 @@ function SetupInner() {
   const goStep3 = () => {
     setError(null);
     if (starterCount === 0) return setError("בחר לפחות שחקן אחד בהרכב הפותח");
-    if (starterCount > MAX_STARTERS) {
+    if (fieldXi.length > MAX_STARTERS) {
       return setError(`מקסימום ${MAX_STARTERS} שחקני שדה בהרכב הפותח`);
+    }
+    if (gkXi.length > MAX_GK_STARTERS) {
+      return setError("שוער אחד בהרכב הפותח");
     }
     pruneSlotsToStarters(sel);
     clearPicks();
@@ -237,7 +261,8 @@ function SetupInner() {
   const handleSubmit = async () => {
     setError(null);
     if (starterCount === 0) return setError("בחר הרכב פותח");
-    if (!allXiPlaced) return setError("מקם כל שחקן פותח על המגרש לפני תחילת המשחק");
+    if (fieldXi.length === 0) return setError("בחר שחקני שדה בהרכב הפותח");
+    if (!allXiPlaced) return setError("מקם כל שחקן שדה פותח על המגרש לפני תחילת המשחק");
 
     const slotById = new Map<string, number>();
     slots.forEach((id, i) => {
@@ -254,7 +279,7 @@ function SetupInner() {
         position: p.position,
         is_starter: starter,
         on_pitch: starter,
-        lineup_slot: starter && slot !== undefined ? slot : null,
+        lineup_slot: starter && !isGoalkeeper(p.position) && slot !== undefined ? slot : null,
       };
     });
 
@@ -270,9 +295,14 @@ function SetupInner() {
             match_type: matchType,
             status: "live",
             kickoff_at,
+            formation_id: formationId,
           });
+      writeSavedFormation(match.id, formationId);
       await addPlayers(match.id, chosen);
-      if (existingMatchId) await startMatch(existingMatchId);
+      if (existingMatchId) {
+        await updateMatch(existingMatchId, { formation_id: formationId }).catch(() => undefined);
+        await startMatch(existingMatchId);
+      }
       router.push(`/live/${match.id}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "שגיאה בשמירה";
@@ -445,14 +475,15 @@ function SetupInner() {
             <p className="text-[var(--muted)]">
               פותחים:{" "}
               <span className="tabular text-[var(--accent)]">
-                {starterCount}/{MAX_STARTERS}
+                {fieldXi.length}/{MAX_STARTERS}
               </span>
+              {gkXi.length > 0 ? " · שוער" : ""}
               {" · "}
               ספסל: <span className="tabular">{matchBenchCount}</span>
             </p>
           </div>
           <p className="mb-2 text-[11px] text-[var(--muted-2)]">
-            לחץ XI על עד {MAX_STARTERS} שחקני שדה. בשלב הבא תמקם אותם על המגרש בעצמך.
+            לחץ XI על עד {MAX_STARTERS} שחקני שדה ושוער אחד. בשלב הבא תמקם את שחקני השדה על המגרש.
           </p>
         </>
       )}
@@ -506,6 +537,15 @@ function SetupInner() {
             highlightSlot={pickSlot}
             showSlotLabels
             formation={formationById(formationId).slots}
+            gkOccupant={
+              gkXi[0]
+                ? {
+                    id: gkXi[0].id,
+                    shirt_number: parseInt(sel[gkXi[0].id]?.number ?? "", 10) || gkXi[0].shirt_number,
+                    name: gkXi[0].name,
+                  }
+                : null
+            }
           />
           <p className="label mt-3 mb-2">
             {unplacedXi.length > 0 ? "פותחים שטרם מוקמו" : "כל הפותחים על המגרש"}

@@ -1,3 +1,5 @@
+import { isGoalkeeper } from "./gk";
+
 /** פורמציות לשחקני שדה בלבד (בלי שוער) — 10 עמדות */
 
 export const LINEUP_SIZE = 10;
@@ -116,6 +118,36 @@ export function formationById(id: FormationId): FormationDef {
   return FORMATIONS.find((f) => f.id === id) ?? FORMATIONS[0];
 }
 
+export function isFormationId(id: string | null | undefined): id is FormationId {
+  return Boolean(id && FORMATIONS.some((f) => f.id === id));
+}
+
+export function parseFormationId(id: string | null | undefined): FormationId | null {
+  return isFormationId(id) ? id : null;
+}
+
+export function formationStorageKey(matchId: string) {
+  return `scout_formation_${matchId}`;
+}
+
+export function readSavedFormation(matchId: string): FormationId | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return parseFormationId(localStorage.getItem(formationStorageKey(matchId)));
+  } catch {
+    return null;
+  }
+}
+
+export function writeSavedFormation(matchId: string, id: FormationId) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(formationStorageKey(matchId), id);
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export function groupSlotsOf(slots: FormationSlot[]): Record<PitchZone, number[]> {
   const groups: Record<PitchZone, number[]> = { def: [], mid: [], att: [] };
   for (const s of slots) groups[s.zone].push(s.slot);
@@ -124,6 +156,7 @@ export function groupSlotsOf(slots: FormationSlot[]): Record<PitchZone, number[]
 
 export function inferSlotGroup(position: string | null | undefined): PitchZone | null {
   if (!position) return null;
+  if (isGoalkeeper(position)) return null;
   const p = position.toLowerCase();
   if (/חלוץ|אגף|כנף|\bst\b|lw|rw|cf|ss|wing|forward|striker/.test(p)) return "att";
   if (/קשר התקפ|\bam\b|\bcam\b/.test(p)) return "att";
@@ -166,8 +199,9 @@ export function autoAssignSlots(
   const taken = new Set<number>();
   const placed = new Set<string>();
   const groups = groupSlotsOf(formation);
+  const fieldPlayers = players.filter((p) => !isGoalkeeper(p.position));
 
-  for (const p of players) {
+  for (const p of fieldPlayers) {
     const group = inferSlotGroup(p.position);
     if (!group) continue;
     const slot = firstFree(groups[group], taken);
@@ -179,7 +213,7 @@ export function autoAssignSlots(
   }
 
   const all = Array.from({ length: LINEUP_SIZE }, (_, i) => i);
-  for (const p of players) {
+  for (const p of fieldPlayers) {
     if (placed.has(p.id)) continue;
     const slot = firstFree(all, taken);
     if (slot == null) break;

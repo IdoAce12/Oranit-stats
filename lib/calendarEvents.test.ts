@@ -107,6 +107,97 @@ describe("buildCalendarEvents", () => {
     expect(hasharonEvent?.status).toBe("scheduled");
     expect(nextCalendarDate(events, "2026-09-26", "2026-09-28")).toBe("2026-09-28");
   });
+
+  it("לא מציג פעמיים משחק הושלם מהמסד ומההתאחדות", () => {
+    const events = buildCalendarEvents(
+      [
+        makeMatch({
+          id: "m-done",
+          opponent: "שמשון בני טייבה",
+          match_date: "2026-09-12",
+          status: "finished",
+        }),
+      ],
+      [
+        {
+          date: "2026-09-12",
+          opponent: "שמשון בני טייבה",
+          home: false,
+          venue: "טייבה",
+          time: "20:00",
+          score: "2-1",
+          gameId: "7",
+        },
+      ],
+      [],
+      "2026-09-26"
+    );
+    const rows = events.filter((e) => e.kind === "match" && e.opponent.includes("טייבה"));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].matchId).toBe("m-done");
+    expect(rows[0].score).toBe("2-1");
+    expect(rows[0].home).toBe(false);
+  });
+
+  it("לא מציג פעמיים כשיש שני רשומות במסד לאותו יום", () => {
+    const events = buildCalendarEvents(
+      [
+        makeMatch({
+          id: "db-1",
+          opponent: "שמשון בני טייבה",
+          match_date: "2026-09-12",
+          status: "finished",
+        }),
+        makeMatch({
+          id: "db-2",
+          opponent: "טייבה",
+          match_date: "2026-09-12",
+          status: "scheduled",
+        }),
+      ],
+      [
+        {
+          date: "2026-09-12",
+          opponent: "שמשון בני טייבה",
+          home: false,
+          venue: "טייבה",
+          time: "20:00",
+          score: "2-1",
+          gameId: "7",
+        },
+      ],
+      [],
+      "2026-09-26"
+    );
+    expect(events.filter((e) => e.kind === "match" && e.date === "2026-09-12")).toHaveLength(1);
+  });
+
+  it("מאחד כששמות היריבה נבדלים בקידומת מועדון", () => {
+    const events = buildCalendarEvents(
+      [
+        makeMatch({
+          id: "db-tayibe",
+          opponent: "מ.כ. טייבה",
+          match_date: "2026-09-12",
+          status: "finished",
+        }),
+      ],
+      [
+        {
+          date: "2026-09-12",
+          opponent: "שמשון בני טייבה",
+          home: false,
+          venue: "טייבה",
+          time: "20:00",
+          score: "2-1",
+          gameId: "7",
+        },
+      ],
+      [],
+      "2026-09-26"
+    );
+    expect(events.filter((e) => e.kind === "match" && e.date === "2026-09-12")).toHaveLength(1);
+  });
 });
 
 describe("nextCalendarDate", () => {

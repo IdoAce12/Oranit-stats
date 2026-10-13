@@ -27,6 +27,11 @@ describe("resolveFinalMinute", () => {
     const subs = [makeSub({ half: 2, match_minute: 95 })]; // אבסולוטי 95
     expect(resolveFinalMinute(null, subs, 0)).toBe(95);
   });
+
+  it("חותך דקות מטורפות מבאג שעון שלא נעצר", () => {
+    const match = makeMatch({ final_half: 2, final_minute: 6666 });
+    expect(resolveFinalMinute(match, [], 5000)).toBe(90);
+  });
 });
 
 describe("computePlayingMinutes", () => {

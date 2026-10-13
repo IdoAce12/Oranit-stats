@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { loadSeasonBundle } from "@/lib/db";
 import {
@@ -26,6 +26,7 @@ import { matchIdsForTypes, OFFICIAL_MATCH_TYPES } from "@/lib/matchFilter";
 import { withTimeout } from "@/lib/withTimeout";
 import { uniqueTrendLabels } from "@/lib/trendLabel";
 import { METRIC_COLORS, METRIC_LABELS, MetricKey } from "@/lib/trendMetrics";
+import { emptyGkCounts, isGkSeasonIdentity } from "@/lib/gk";
 
 const PLAYER_TREND_METRICS: MetricKey[] = [
   "score",
@@ -60,12 +61,14 @@ function emptySeasonRow(base: SeasonImpact): SeasonImpact {
     defTackles: 0,
     midTackles: 0,
     attTackles: 0,
+    ...emptyGkCounts(),
     perMatch: 0,
   };
 }
 
 export default function SeasonPlayerPage() {
   const params = useParams<{ key: string }>();
+  const router = useRouter();
   const playerKey = decodeURIComponent(params.key ?? "");
   const { isCoach } = useAuth();
 
@@ -156,6 +159,13 @@ export default function SeasonPlayerPage() {
     [playerKey, filteredEvents, filteredPlayers, filteredMatches, squad]
   );
 
+  useEffect(() => {
+    if (loading || !seasonRow) return;
+    if (isGkSeasonIdentity(seasonRow, squad, players)) {
+      router.replace(`/season/gk/${encodeURIComponent(seasonRow.key)}`);
+    }
+  }, [loading, seasonRow, squad, players, router]);
+
   const matchTypeById = useMemo(
     () => new Map(filteredMatches.map((m) => [m.id, m.match_type ?? "league"] as const)),
     [filteredMatches]
@@ -230,6 +240,15 @@ export default function SeasonPlayerPage() {
         <Link href="/season" className="mt-4 text-center text-[var(--muted)]">
           ← חזרה לנתונים
         </Link>
+      </main>
+    );
+  }
+
+  if (isGkSeasonIdentity(seasonRow, squad, players)) {
+    return (
+      <main className="mx-auto w-full max-w-2xl px-4 page-shell pb-nav">
+        <AppHeader title="פרופיל שוער" />
+        <PageSkeleton />
       </main>
     );
   }

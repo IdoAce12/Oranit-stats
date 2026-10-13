@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { createMatch, deleteMatch, getPlayers, listMatches, startMatch } from "@/lib/db";
+import { createMatch, deleteMatch, getIfaCache, getPlayers, listMatches, startMatch } from "@/lib/db";
 import { requestIfaSync } from "@/lib/ifa/client";
 import type { IfaFixture } from "@/lib/ifa/parse";
 import { matchKickoff, splitMatches } from "@/lib/fixtures";
@@ -36,14 +36,9 @@ export default function HomePage() {
     setLoading(true);
     const run = async () => {
       try {
-        const rows = await listMatches();
-        const result = await requestIfaSync(false);
-        if (!cancelled && result?.fixtures) setFixtures(result.fixtures);
-        const needReload = Boolean(
-          result && ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0 || (result.deleted ?? 0) > 0)
-        );
-        const nextRows = needReload ? await listMatches() : rows;
-        if (!cancelled) setMatches(nextRows);
+        const [rows, cache] = await Promise.all([listMatches(), getIfaCache().catch(() => null)]);
+        if (!cancelled && cache?.fixtures) setFixtures(cache.fixtures);
+        if (!cancelled) setMatches(rows);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "שגיאה בטעינת משחקים");
       } finally {
@@ -245,15 +240,31 @@ export default function HomePage() {
 
       {isCoach && (
         <section className="home-feed">
-          <h2 className="mb-3 text-[13px] font-semibold tracking-[0.18em] text-white/45">משחקים</h2>
           {loading && <PageSkeleton rows={3} />}
           {!loading && matches.length === 0 && (
             <p className="text-sm text-white/45">עדיין אין משחקים.</p>
           )}
-          <ul className="flex flex-col gap-3">
-            {live.filter((m) => m.id !== liveNow?.id).map((m) => (
-              <MatchRow key={m.id} match={m} isCoach={isCoach} />
-            ))}
+          {live.filter((m) => m.id !== liveNow?.id).length > 0 && (
+            <ul className="mb-4 flex flex-col gap-3">
+              {live.filter((m) => m.id !== liveNow?.id).map((m) => (
+                <MatchRow key={m.id} match={m} isCoach={isCoach} />
+              ))}
+            </ul>
+          )}
+          {finished.length > 0 && (
+            <>
+              <h2 className="mb-3 text-[13px] font-semibold tracking-[0.18em] text-white/45">משחקים ששוחקו</h2>
+              <ul className="mb-4 flex flex-col gap-3">
+                {finished.slice(0, 6).map((m) => (
+                  <MatchRow key={m.id} match={m} isCoach={isCoach} />
+                ))}
+              </ul>
+            </>
+          )}
+          {scheduled.filter((m) => m.id !== next?.id).length > 0 && (
+            <>
+              <h2 className="mb-3 text-[13px] font-semibold tracking-[0.18em] text-white/45">משחקים מתוכננים</h2>
+              <ul className="flex flex-col gap-3">
             {scheduled
               .filter((m) => m.id !== next?.id)
               .map((m) => (
@@ -302,10 +313,9 @@ export default function HomePage() {
                   </div>
                 </li>
               ))}
-            {finished.slice(0, 6).map((m) => (
-              <MatchRow key={m.id} match={m} isCoach={isCoach} />
-            ))}
-          </ul>
+              </ul>
+            </>
+          )}
         </section>
       )}
     </main>

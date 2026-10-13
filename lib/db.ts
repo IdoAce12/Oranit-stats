@@ -1,5 +1,6 @@
 import { getSupabase } from "./supabaseClient";
 import { matchIfaKey, type IfaFixture, type IfaStandingRow } from "./ifa/parse";
+import { capInsaneMinute } from "./playingMinutes";
 import { parseTrainings, type Training } from "./trainings";
 import { Half, Match, MatchEvent, MatchType, Player, SquadPlayer, Substitution } from "./types";
 
@@ -112,6 +113,7 @@ export async function createMatch(input: {
   kickoff_at?: string | null;
   ifa_key?: string | null;
   notes?: string;
+  formation_id?: string | null;
 }): Promise<Match> {
   const supabase = requireClient();
   const row: Record<string, unknown> = {
@@ -124,8 +126,17 @@ export async function createMatch(input: {
   };
   if (input.ifa_key != null) row.ifa_key = input.ifa_key;
   if (input.notes != null) row.notes = input.notes;
+  if (input.formation_id != null) row.formation_id = input.formation_id;
   const { data, error } = await supabase.from("matches").insert(row).select().single();
-  if (error) throw error;
+  if (error) {
+    if (input.formation_id != null && /formation_id/i.test(error.message)) {
+      delete row.formation_id;
+      const retry = await supabase.from("matches").insert(row).select().single();
+      if (retry.error) throw retry.error;
+      return retry.data as Match;
+    }
+    throw error;
+  }
   return data as Match;
 }
 
@@ -137,6 +148,7 @@ export async function updateMatch(
     kickoff_at?: string | null;
     ifa_key?: string | null;
     notes?: string;
+    formation_id?: string | null;
   }
 ): Promise<void> {
   const supabase = requireClient();
@@ -146,6 +158,7 @@ export async function updateMatch(
   if (patch.kickoff_at !== undefined) payload.kickoff_at = patch.kickoff_at;
   if (patch.ifa_key !== undefined) payload.ifa_key = patch.ifa_key;
   if (patch.notes !== undefined) payload.notes = patch.notes;
+  if (patch.formation_id !== undefined) payload.formation_id = patch.formation_id;
   if (Object.keys(payload).length === 0) return;
   const { error } = await supabase.from("matches").update(payload).eq("id", id);
   if (error) throw error;
@@ -301,7 +314,7 @@ export async function finishMatch(
   };
   if (finals) {
     patch.final_half = finals.half;
-    patch.final_minute = finals.minute;
+    patch.final_minute = capInsaneMinute(finals.minute);
   }
   const { error } = await supabase.from("matches").update(patch).eq("id", id);
   if (error) throw error;

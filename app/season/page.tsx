@@ -28,6 +28,7 @@ import { PageSkeleton } from "../components/Skeleton";
 import { MatchTypeChips, RateModeToggle } from "../components/SeasonFilters";
 import { TrendChart, TrendPoint } from "../components/TrendChart";
 import { METRIC_COLORS, METRIC_LABELS } from "@/lib/trendMetrics";
+import { filterFieldSeasonRows, seasonProfileHref } from "@/lib/gk";
 
 type SortKey =
   | "score"
@@ -221,13 +222,14 @@ export default function SeasonPage() {
       press: pressByKey.get(r.key)?.press ?? 0,
       attTackles: pressByKey.get(r.key)?.attTackles ?? 0,
     }));
-    const withActivity = enriched.filter(
+    const fieldOnly = filterFieldSeasonRows(enriched, squad, players);
+    const withActivity = fieldOnly.filter(
       (r) =>
         r.score !== 0 ||
         r.press > 0 ||
         r.goals + r.assists + r.keyPasses + r.tackles + r.lossesTotal + r.shotsInBox > 0
     );
-    const list = withActivity.length > 0 ? withActivity : enriched;
+    const list = withActivity.length > 0 ? withActivity : fieldOnly;
     const q = query.trim().toLowerCase();
     const filtered = q
       ? list.filter(
@@ -340,7 +342,7 @@ export default function SeasonPage() {
             ? "טוען..."
             : `${filteredMatches.length}${
                 selectedTypes.length === 0 ? "" : `/${matchesCount}`
-              } משחקים · ${rows.length} שחקנים${rateMode === "per90" ? " · ל־90׳" : ""}`
+              } משחקים · ${rows.length} שחקני שדה${rateMode === "per90" ? " · ל־90׳" : ""}`
         }
       />
 
@@ -354,6 +356,9 @@ export default function SeasonPage() {
       >
         {exporting ? "מייצא..." : "⬇ ייצוא Excel שנתי ל-Tableau"}
       </button>
+      <Link href="/season/gk" className="btn btn-ghost mb-3 w-full py-3 text-sm">
+        דוח שוערים
+      </Link>
 
       <div className="mb-3 flex gap-2">
         <button
@@ -453,7 +458,7 @@ export default function SeasonPage() {
             return (
               <Link
                 key={row.key}
-                href={`/season/player/${encodeURIComponent(row.key)}`}
+                href={seasonProfileHref(row, squad, players)}
                 className="flex items-center gap-3 p-3 active:bg-white/[0.03]"
               >
                 <span
@@ -560,7 +565,7 @@ export default function SeasonPage() {
                     </td>
                     <td className="sticky right-8 px-2 py-2 text-right">
                       <Link
-                        href={`/season/player/${encodeURIComponent(row.key)}`}
+                        href={seasonProfileHref(row, squad, players)}
                         className="font-bold underline decoration-[var(--border-strong)] underline-offset-2"
                       >
                         {row.label}

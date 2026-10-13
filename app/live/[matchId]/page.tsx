@@ -14,6 +14,7 @@ import {
   getSubstitutions,
   listSquad,
   recordSubstitution,
+  updateMatch,
   updatePlayerSlots,
 } from "@/lib/db";
 import {
@@ -21,10 +22,20 @@ import {
   FORMATIONS,
   FormationId,
   formationById,
+  parseFormationId,
+  readSavedFormation,
   resolveOccupants,
   slotOfPlayer,
+  writeSavedFormation,
 } from "@/lib/formation";
-import { clockDisplay, readClockState } from "@/lib/matchClock";
+import {
+  GK_OUTCOME_GROUPS,
+  GK_SAVE_ACTION,
+  playerIsGoalkeeper,
+  SQUAD_POSITIONS,
+  type GkOutcomeGroup,
+} from "@/lib/gk";
+import { clockDisplay, readClockState, stopClock } from "@/lib/matchClock";
 import { MAX_STARTERS } from "@/lib/playingMinutes";
 import {
   deleteRemote,
@@ -57,7 +68,7 @@ import {
   Zone,
   ZONE_LABELS,
 } from "@/lib/types";
-import { MatchClock } from "./MatchClock";
+import { MatchClock, type MatchClockHandle } from "./MatchClock";
 import { useAuth } from "../../components/AuthProvider";
 
 const PRIMARY_ACTIONS: ActionType[] = ["ball_loss", "tackle", "key_pass", "shot"];
@@ -78,10 +89,20 @@ const ACTION_BTN: Record<ActionType, string> = {
   aerial_lost: "bg-gradient-to-b from-slate-500 to-slate-700 text-white",
   ground_won: "bg-gradient-to-b from-lime-400 to-lime-600 text-[#14320a]",
   ground_lost: "bg-gradient-to-b from-orange-500 to-orange-700 text-white",
+  gk_save: "bg-gradient-to-b from-violet-400 to-violet-600 text-white shadow-[0_10px_30px_-12px_rgba(139,92,246,0.85)]",
+  gk_pass_ok: "bg-gradient-to-b from-sky-400 to-sky-600 text-white",
+  gk_pass_miss: "bg-gradient-to-b from-slate-500 to-slate-700 text-white",
+  gk_exit_ok: "bg-gradient-to-b from-fuchsia-400 to-fuchsia-600 text-white",
+  gk_exit_bad: "bg-gradient-to-b from-orange-500 to-orange-700 text-white",
+  gk_aerial_ok: "bg-gradient-to-b from-indigo-400 to-indigo-600 text-white",
+  gk_aerial_miss: "bg-gradient-to-b from-slate-500 to-slate-700 text-white",
+  gk_accurate_pass: "bg-gradient-to-b from-sky-400 to-sky-600 text-white",
+  gk_aerial: "bg-gradient-to-b from-indigo-400 to-indigo-600 text-white",
+  gk_exit: "bg-gradient-to-b from-fuchsia-400 to-fuchsia-600 text-white",
 };
 
 type SubPhase = "out" | "in" | null;
-type ModalPhase = "action" | "zone" | "box" | "duel" | null;
+type ModalPhase = "action" | "zone" | "box" | "duel" | "gk_outcome" | null;
 type PitchEditMode = "off" | "edit";
 
 export default function LivePage() {
@@ -105,6 +126,7 @@ export default function LivePage() {
   const [rosterOpen, setRosterOpen] = useState(false);
   const [newNum, setNewNum] = useState("");
   const [newName, setNewName] = useState("");
+  const [newPosition, setNewPosition] = useState("");
   const [alsoSquad, setAlsoSquad] = useState(true);
   const [rosterBusy, setRosterBusy] = useState(false);
 
@@ -115,6 +137,7 @@ export default function LivePage() {
   const [formationId, setFormationId] = useState<FormationId>(DEFAULT_FORMATION_ID);
 
   const clockRef = useRef<{ half: Half; minute: number }>({ half: 1, minute: 0 });
+  const clockApi = useRef<MatchClockHandle>(null);
 
   useEffect(() => {
     if (!authLoading && !isCoach) router.replace("/");
@@ -124,6 +147,7 @@ export default function LivePage() {
   const [modalAction, setModalAction] = useState<ActionType | null>(null);
   const [modalPhase, setModalPhase] = useState<ModalPhase>(null);
   const [duelKind, setDuelKind] = useState<DuelKind | null>(null);
+  const [gkGroup, setGkGroup] = useState<GkOutcomeGroup | null>(null);
 
   const refreshPending = useCallback(() => setPending(pendingCount()), []);
 
@@ -172,9 +196,14 @@ export default function LivePage() {
           return;
         }
         setMatch(m);
+        const savedFormation =
+          parseFormationId(m?.formation_id) ?? readSavedFormation(matchId) ?? DEFAULT_FORMATION_ID;
+        setFormationId(savedFormation);
+        if (m?.id) writeSavedFormation(m.id, savedFormation);
 
-        const occupants = resolveOccupants(ps);
+        const occupants = resolveOccupants(ps.filter((p) => !playerIsGoalkeeper(p, sq)));
         const patched = ps.map((p) => {
+          if (playerIsGoalkeeper(p, sq)) return { ...p, lineup_slot: null };
           const slot = occupants.findIndex((o) => o?.id === p.id);
           if (slot >= 0) return { ...p, lineup_slot: slot };
           if (p.on_pitch === false && p.lineup_slot != null) return { ...p, lineup_slot: null };
@@ -242,6 +271,7 @@ export default function LivePage() {
     setModalPlayerId(playerId);
     setModalAction(null);
     setDuelKind(null);
+    setGkGroup(null);
     setModalPhase("action");
   };
 
@@ -293,11 +323,24 @@ export default function LivePage() {
     await deleteRemote(id);
   };
 
+  const persistFormation = (id: FormationId) => {
+    setFormationId(id);
+    writeSavedFormation(matchId, id);
+    updateMatch(matchId, { formation_id: id }).catch(() => undefined);
+  };
+
   const endMatch = async () => {
+    const stopped =
+      clockApi.current?.stop() ??
+      (() => {
+        const frozen = stopClock(matchId);
+        const d = clockDisplay(frozen);
+        return { half: d.half, minute: d.minute };
+      })();
+    clockRef.current = stopped;
     await trySync();
-    const clock = clockDisplay(readClockState(matchId));
     try {
-      await finishMatch(matchId, { half: clock.half, minute: clock.minute });
+      await finishMatch(matchId, stopped);
     } catch {
       /* גם אם הסימון נכשל, ננווט לדוח */
     }
@@ -323,7 +366,15 @@ export default function LivePage() {
     return players.filter((p) => !pitchIds.has(p.id));
   }, [players, pitchPlayers]);
 
-  const occupants = useMemo(() => resolveOccupants(pitchPlayers), [pitchPlayers]);
+  const fieldPitch = useMemo(
+    () => pitchPlayers.filter((p) => !playerIsGoalkeeper(p, squad)),
+    [pitchPlayers, squad]
+  );
+  const gkOnPitch = useMemo(
+    () => pitchPlayers.find((p) => playerIsGoalkeeper(p, squad)) ?? null,
+    [pitchPlayers, squad]
+  );
+  const occupants = useMemo(() => resolveOccupants(fieldPitch), [fieldPitch]);
 
   const parseShirt = (raw: string): number | null => {
     const digits = raw.replace(/[^\d]/g, "");
@@ -361,11 +412,16 @@ export default function LivePage() {
     const num = parseShirt(newNum);
     if (num === null) return setNotice("מספר חולצה לא תקין (0–99)");
     if (!newName.trim()) return setNotice("צריך שם שחקן");
+    if (alsoSquad && !newPosition.trim()) return setNotice("חובה לבחור עמדה — כולל שוער");
     setRosterBusy(true);
     try {
       let squadId: string | null = null;
       if (alsoSquad) {
-        const s = await addSquadPlayer({ shirt_number: num, name: newName.trim() });
+        const s = await addSquadPlayer({
+          shirt_number: num,
+          name: newName.trim(),
+          position: newPosition.trim() || null,
+        });
         squadId = s.id;
         setSquad((prev) => [...prev, s].sort((a, b) => a.shirt_number - b.shirt_number));
       }
@@ -374,6 +430,7 @@ export default function LivePage() {
           squad_player_id: squadId,
           shirt_number: num,
           name: newName.trim(),
+          position: newPosition.trim() || null,
           is_starter: false,
           on_pitch: false,
           lineup_slot: null,
@@ -382,6 +439,7 @@ export default function LivePage() {
       if (added) setPlayers((prev) => [...prev, added].sort((a, b) => a.shirt_number - b.shirt_number));
       setNewNum("");
       setNewName("");
+      setNewPosition("");
     } catch {
       setNotice("הוספת שחקן נכשלה");
     } finally {
@@ -427,10 +485,18 @@ export default function LivePage() {
       setPlayers((prev) => {
         const next = prev.map((p) => {
           if (p.id === subOutId) return { ...p, on_pitch: false, lineup_slot: null };
-          if (p.id === inId) return { ...p, on_pitch: true, lineup_slot: outSlot };
+          if (p.id === inId) {
+            return {
+              ...p,
+              on_pitch: true,
+              lineup_slot: playerIsGoalkeeper(p, squad) ? null : outSlot,
+            };
+          }
           return p;
         });
-        const resolved = resolveOccupants(next.filter((p) => p.on_pitch === true));
+        const resolved = resolveOccupants(
+          next.filter((p) => p.on_pitch === true && !playerIsGoalkeeper(p, squad))
+        );
         const synced = next.map((p) => {
           const slot = resolved.findIndex((o) => o?.id === p.id);
           if (p.on_pitch === true) {
@@ -510,6 +576,7 @@ export default function LivePage() {
     setModalPlayerId(null);
     setModalPhase(null);
     setDuelKind(null);
+    setGkGroup(null);
   };
 
   const onPitchSlot = (_slot: number, player: { id: string } | null) => {
@@ -522,6 +589,16 @@ export default function LivePage() {
         return;
       }
       if (subOutId === player.id) {
+        setSubOutId(null);
+        setSubPhase("out");
+        return;
+      }
+      const outP = players.find((p) => p.id === subOutId);
+      const inP = players.find((p) => p.id === player.id);
+      if (
+        (outP && playerIsGoalkeeper(outP, squad)) ||
+        (inP && playerIsGoalkeeper(inP, squad))
+      ) {
         setSubOutId(null);
         setSubPhase("out");
         return;
@@ -598,6 +675,7 @@ export default function LivePage() {
       </div>
 
       <MatchClock
+        ref={clockApi}
         matchId={matchId}
         onChange={(half, minute) => {
           clockRef.current = { half, minute };
@@ -620,13 +698,28 @@ export default function LivePage() {
       )}
 
       <div className="mt-3">
-        <p className="label mb-1.5">מערך</p>
-        <div className="mb-2 flex flex-wrap gap-1.5">
+        <LineupPitch
+          occupants={occupants}
+          onSlotClick={onPitchSlot}
+          formation={formationById(formationId).slots}
+          highlightPlayerId={subOutId ?? modalPlayerId}
+          disabled={subBusy}
+          gkOccupant={
+            gkOnPitch
+              ? { id: gkOnPitch.id, shirt_number: gkOnPitch.shirt_number, name: gkOnPitch.name }
+              : null
+          }
+          onGkClick={(player) => {
+            if (player) onPitchSlot(-1, player);
+          }}
+        />
+        <p className="label mt-3 mb-1.5">מערך</p>
+        <div className="flex flex-wrap gap-1.5">
           {FORMATIONS.map((f) => (
             <button
               key={f.id}
               type="button"
-              onClick={() => setFormationId(f.id)}
+              onClick={() => persistFormation(f.id)}
               className={`btn h-8 px-2.5 text-xs ${formationId === f.id ? "btn-primary" : "btn-ghost"}`}
             >
               {f.label}
@@ -634,20 +727,13 @@ export default function LivePage() {
             </button>
           ))}
         </div>
-        <LineupPitch
-          occupants={occupants}
-          onSlotClick={onPitchSlot}
-          formation={formationById(formationId).slots}
-          highlightPlayerId={subOutId ?? modalPlayerId}
-          disabled={subBusy}
-        />
       </div>
 
       <div className="mt-3">
         <div className="mb-1.5 flex items-center justify-between">
           <p className="label">ספסל</p>
           <span className="text-[10px] text-[var(--muted-2)]">
-            {pitchPlayers.length}/{MAX_STARTERS} על המגרש
+            {fieldPitch.length}/{MAX_STARTERS} שדה{gkOnPitch ? " · שוער" : ""}
           </span>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1">
@@ -757,13 +843,59 @@ export default function LivePage() {
                 {modalPhase === "zone" && modalAction && ` · ${ACTION_LABELS[modalAction]} · אזור?`}
                 {modalPhase === "box" && " · מאיפה הבעיטה?"}
                 {modalPhase === "duel" && duelKind && ` · ${DUEL_KIND_LABELS[duelKind]} · תוצאה?`}
+                {modalPhase === "gk_outcome" && gkGroup && ` · ${gkGroup.label} · תוצאה?`}
               </span>
               <button onClick={closeModal} className="btn btn-ghost h-8 px-3 text-sm">
                 בטל
               </button>
             </div>
 
-            {modalPhase === "action" && (
+            {modalPhase === "action" && playerIsGoalkeeper(modalPlayer, squad) && (
+              <div className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => onActionPick(GK_SAVE_ACTION)}
+                  className={`btn rounded-2xl py-7 text-lg ${ACTION_BTN[GK_SAVE_ACTION]}`}
+                >
+                  {ACTION_LABELS[GK_SAVE_ACTION]}
+                </button>
+                {GK_OUTCOME_GROUPS.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => {
+                      tapFeedback(8);
+                      setGkGroup(group);
+                      setModalPhase("gk_outcome");
+                    }}
+                    className={`btn rounded-2xl py-7 text-lg ${ACTION_BTN[group.ok]}`}
+                  >
+                    {group.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {modalPhase === "gk_outcome" && gkGroup && (
+              <div className="flex flex-col gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => onActionPick(gkGroup.ok)}
+                  className="btn rounded-2xl bg-emerald-500/85 py-9 text-xl font-black text-[#04150e]"
+                >
+                  {gkGroup.okLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onActionPick(gkGroup.miss)}
+                  className="btn rounded-2xl bg-red-500/80 py-9 text-xl font-black text-white"
+                >
+                  {gkGroup.missLabel}
+                </button>
+              </div>
+            )}
+
+            {modalPhase === "action" && !playerIsGoalkeeper(modalPlayer, squad) && (
               <div className="flex flex-col gap-2.5">
                 <div className="grid grid-cols-2 gap-2.5">
                   {PRIMARY_ACTIONS.map((action) => (
@@ -896,7 +1028,7 @@ export default function LivePage() {
             </div>
 
             <div className="mb-4">
-              <p className="label mb-2">על המגרש ({pitchPlayers.length}/{MAX_STARTERS})</p>
+              <p className="label mb-2">על המגרש ({fieldPitch.length}/{MAX_STARTERS}{gkOnPitch ? " · שוער" : ""})</p>
               <div className="mb-3 flex flex-col gap-2">
                 {pitchPlayers.map((p) => (
                   <div
@@ -982,6 +1114,19 @@ export default function LivePage() {
                   className="field min-w-0 flex-1"
                 />
               </div>
+              <select
+                value={newPosition}
+                onChange={(e) => setNewPosition(e.target.value)}
+                aria-label="עמדה"
+                className="field mt-2 w-full"
+              >
+                <option value="">עמדה{alsoSquad ? " — חובה" : ""}</option>
+                {SQUAD_POSITIONS.map((pos) => (
+                  <option key={pos.id} value={pos.id}>
+                    {pos.label}
+                  </option>
+                ))}
+              </select>
               <label className="mt-2 flex items-center gap-2 text-sm text-[var(--muted)]">
                 <input
                   type="checkbox"

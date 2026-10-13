@@ -19,8 +19,9 @@ import {
 } from "@/lib/calendarMonth";
 import { israelToday } from "@/lib/fixtures";
 import { IFA_OUR_NAME } from "@/lib/ifa/config";
-import type { IfaStandingRow } from "@/lib/ifa/parse";
+import { namesMatch, type IfaStandingRow } from "@/lib/ifa/parse";
 import { newTrainingId, type Training } from "@/lib/trainings";
+import { homeAwaySides } from "@/lib/ifa/score";
 import { CrestMark } from "./CrestMark";
 
 function downloadIcs(event: CalendarEvent) {
@@ -48,6 +49,7 @@ function MatchPeek({
       : event.status === "finished" && event.matchId
         ? `/report/${event.matchId}`
         : null;
+  const sides = homeAwaySides(event);
 
   return (
     <article className="cal-peek">
@@ -55,16 +57,29 @@ function MatchPeek({
       <p className="cal-peek-meta">{typeLine(event)}</p>
       <div className="cal-peek-teams">
         <div className="cal-peek-club">
-          <CrestMark name={IFA_OUR_NAME} standings={standings} ours size={56} />
-          <span>אורנית</span>
+          <CrestMark
+            name={sides.homeIsUs ? IFA_OUR_NAME : event.opponent}
+            standings={standings}
+            ours={sides.homeIsUs}
+            size={56}
+          />
+          <span>{sides.homeName}</span>
+          <span className="cal-peek-role">בית</span>
+          {sides.homeGoals != null && <span className="cal-peek-score tabular">{sides.homeGoals}</span>}
         </div>
         <span className="cal-peek-vs">נגד</span>
         <div className="cal-peek-club">
-          <CrestMark name={event.opponent} standings={standings} size={56} />
-          <span>{event.opponent}</span>
+          <CrestMark
+            name={sides.awayIsUs ? IFA_OUR_NAME : event.opponent}
+            standings={standings}
+            ours={sides.awayIsUs}
+            size={56}
+          />
+          <span>{sides.awayName}</span>
+          <span className="cal-peek-role">חוץ</span>
+          {sides.awayGoals != null && <span className="cal-peek-score tabular">{sides.awayGoals}</span>}
         </div>
       </div>
-      {event.score && <p className="cal-peek-score">{event.score}</p>}
       {href && (
         <Link href={href} className="mt-3 block text-center text-sm font-bold text-[var(--accent)]">
           {event.status === "live" ? "כניסה ללייב" : "לדוח המשחק"}
@@ -215,7 +230,22 @@ export function MatchCalendar({
 
   const cells = useMemo(() => monthCells(year, month), [year, month]);
   const title = monthTitle(year, month);
-  const selectedEvents = eventsOnDate(events, selected);
+  const selectedEvents = useMemo(() => {
+    const raw = eventsOnDate(events, selected);
+    const unique: CalendarEvent[] = [];
+    for (const event of raw) {
+      if (event.kind !== "match") {
+        unique.push(event);
+        continue;
+      }
+      const dup = unique.some(
+        (seen) =>
+          seen.kind === "match" && seen.date === event.date && namesMatch(seen.opponent, event.opponent)
+      );
+      if (!dup) unique.push(event);
+    }
+    return unique;
+  }, [events, selected]);
   const addTarget = selectedEvents.find((e) => e.kind !== "training") ?? selectedEvents[0] ?? null;
 
   const goMonth = (delta: number) => {

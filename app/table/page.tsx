@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getIfaCache } from "@/lib/db";
 import { formatIfaFetchedAt, requestIfaSync } from "@/lib/ifa/client";
 import { IFA_TEAM_URL } from "@/lib/ifa/config";
 import type { IfaStandingRow } from "@/lib/ifa/parse";
@@ -20,8 +21,25 @@ export default function TablePage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const applyCache = async () => {
+    const cache = await getIfaCache();
+    if (cache?.standings?.length) setStandings(cache.standings);
+    if (cache?.fetched_at) setFetchedAt(cache.fetched_at);
+    return cache?.fetched_at ?? null;
+  };
+
   const apply = async (fresh: boolean) => {
-    const result = await requestIfaSync(fresh);
+    if (!fresh) {
+      try {
+        const fetched = await applyCache();
+        setError(null);
+        return { ok: true as const, refreshStarted: false, fetchedAt: fetched };
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "שגיאה בטעינת הטבלה");
+        return { ok: false as const, refreshStarted: false, fetchedAt: null as string | null };
+      }
+    }
+    const result = await requestIfaSync(true);
     if (!result) return { ok: false as const, refreshStarted: false, fetchedAt: null as string | null };
     if ((result.standings?.length ?? 0) > 0 || !result.error) {
       setStandings(result.standings ?? []);

@@ -111,25 +111,6 @@ export async function runIfaSync(
   const skipLive = !suppliedHtml && !(opts.force && ifaLiveScrapeEnabled());
 
   if (skipLive) {
-    if (!schemaMissing && cache?.fixtures?.length) {
-      try {
-        const existing = await listMatches();
-        const plan = planFixtureSync(existing, cache.fixtures, dismissedKeys, today);
-        await applyPlan(plan, dismissedKeys);
-        const blocked = new Set(activeDismissed);
-        return fromCache(cache, {
-          dismissedKeys: activeDismissed,
-          inserted: plan.inserts.filter((row) => !blocked.has(row.ifa_key)).length,
-          updated: plan.updates.length,
-          skipped: plan.skipped,
-          deleted: plan.deletes.length,
-          error: schemaMissing ? migrationError : undefined,
-        });
-      } catch (e) {
-        console.error("ifa cache apply", e);
-        return fromCache(cache, { dismissedKeys: activeDismissed });
-      }
-    }
     return fromCache(cache, {
       dismissedKeys: activeDismissed,
       error: schemaMissing ? migrationError : cache ? undefined : waitingError,

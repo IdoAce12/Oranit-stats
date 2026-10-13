@@ -60,3 +60,18 @@ export function clockDisplay(state: ClockState, now = Date.now()) {
     elapsed,
   };
 }
+
+/** מקפיא את השעון ברגע הנוכחי — בלי להמשיך לרוץ ברקע. */
+export function freezeClock(state: ClockState, now = Date.now()): ClockState {
+  return {
+    half: state.half,
+    accumulated: elapsedSeconds(state, now),
+    startedAt: null,
+  };
+}
+
+export function stopClock(matchId: string, now = Date.now()): ClockState {
+  const next = freezeClock(readClockState(matchId), now);
+  writeClockState(matchId, next);
+  return next;
+}

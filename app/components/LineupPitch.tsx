@@ -11,6 +11,8 @@ interface Props {
   showSlotLabels?: boolean;
   disabled?: boolean;
   formation?: FormationSlot[];
+  gkOccupant?: PitchOccupant | null;
+  onGkClick?: (player: PitchOccupant | null) => void;
 }
 
 export function LineupPitch({
@@ -21,6 +23,8 @@ export function LineupPitch({
   showSlotLabels = false,
   disabled = false,
   formation = FORMATION_4_3_3,
+  gkOccupant = null,
+  onGkClick,
 }: Props) {
   return (
     <div
@@ -90,6 +94,38 @@ export function LineupPitch({
           </button>
         );
       })}
+
+      {(gkOccupant || onGkClick) && (
+        <button
+          type="button"
+          disabled={disabled || !onGkClick}
+          onClick={() => onGkClick?.(gkOccupant ?? null)}
+          style={{ left: "50%", top: "92%" }}
+          className={`absolute z-10 flex w-[4.35rem] -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 ${
+            disabled ? "opacity-70" : ""
+          }`}
+          aria-label={gkOccupant ? `#${gkOccupant.shirt_number} ${gkOccupant.name}` : "שוער"}
+        >
+          <span
+            className={`flex h-12 w-12 items-center justify-center rounded-full border-2 text-lg font-black tabular shadow-[0_10px_18px_-4px_rgba(0,0,0,0.75)] transition ${
+              gkOccupant && highlightPlayerId === gkOccupant.id
+                ? "scale-110 border-amber-300 bg-amber-400 text-[#241a00] shadow-[0_0_20px_rgba(251,191,36,0.7)]"
+                : gkOccupant
+                  ? "border-white/90 bg-gradient-to-b from-[#7c3aed] to-[#4c1d95] text-white"
+                  : "border-dashed border-white/50 bg-[#0a246b]/45 text-white/70"
+            }`}
+          >
+            {gkOccupant ? gkOccupant.shirt_number : "GK"}
+          </span>
+          <span
+            className={`max-w-full truncate rounded-md px-1 text-[10px] font-bold leading-tight ${
+              gkOccupant ? "bg-[#06123a]/70 text-white" : "text-white/70"
+            }`}
+          >
+            {gkOccupant ? gkOccupant.name : showSlotLabels ? "שוער" : ""}
+          </span>
+        </button>
+      )}
     </div>
   );
 }

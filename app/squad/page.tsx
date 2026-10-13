@@ -11,6 +11,7 @@ import {
   updateSquadPlayer,
 } from "@/lib/db";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import { SQUAD_POSITIONS } from "@/lib/gk";
 import { SquadPlayer } from "@/lib/types";
 
 /** מנקה ספרות בלבד (כולל ספרות ערביות־מזרחיות) ומחזיר מספר חולצה או null */
@@ -72,12 +73,13 @@ export default function SquadPage() {
     const num = parseShirtNumber(newNumber);
     if (num === null) return setError("מספר חולצה לא תקין (0–99)");
     if (!newName.trim()) return setError("צריך שם שחקן");
+    if (!newPosition.trim()) return setError("חובה לבחור עמדה — כולל שוער");
     setAdding(true);
     try {
       const player = await addSquadPlayer({
         shirt_number: num,
         name: newName.trim(),
-        position: newPosition.trim() || null,
+        position: newPosition.trim(),
       });
       setSquad((prev) =>
         [...prev, player].sort((a, b) => a.shirt_number - b.shirt_number)
@@ -112,7 +114,7 @@ export default function SquadPage() {
 
   const saveField = async (
     id: string,
-    field: "shirt_number" | "name",
+    field: "shirt_number" | "name" | "position",
     value: string
   ) => {
     if (field === "shirt_number") {
@@ -124,6 +126,20 @@ export default function SquadPage() {
       try {
         await updateSquadPlayer(id, { shirt_number: num });
         patchLocal(id, { shirt_number: num });
+      } catch {
+        setError("שמירה נכשלה");
+      }
+      return;
+    }
+    if (field === "position") {
+      const position = value.trim();
+      if (!position) {
+        setError("חובה לבחור עמדה");
+        return;
+      }
+      try {
+        await updateSquadPlayer(id, { position });
+        patchLocal(id, { position });
       } catch {
         setError("שמירה נכשלה");
       }
@@ -207,13 +223,20 @@ export default function SquadPage() {
             className="field min-w-0 flex-1"
           />
         </div>
-        <input
-          type="text"
+        <select
           value={newPosition}
           onChange={(e) => setNewPosition(e.target.value)}
-          placeholder="עמדה (אופציונלי) — למשל בלם / קשר"
+          aria-label="עמדה"
           className="field mt-2 w-full"
-        />
+          required
+        >
+          <option value="">עמדה — חובה (כולל שוער)</option>
+          {SQUAD_POSITIONS.map((pos) => (
+            <option key={pos.id} value={pos.id}>
+              {pos.label}
+            </option>
+          ))}
+        </select>
         <button
           onClick={handleAdd}
           disabled={adding || !isSupabaseConfigured}
@@ -273,6 +296,19 @@ export default function SquadPage() {
               aria-label="שם השחקן"
               className="field min-w-0 flex-1"
             />
+            <select
+              value={p.position ?? ""}
+              onChange={(e) => void saveField(p.id, "position", e.target.value)}
+              aria-label="עמדה"
+              className="field w-[5.5rem] shrink-0 px-1 text-xs"
+            >
+              <option value="">עמדה</option>
+              {SQUAD_POSITIONS.map((pos) => (
+                <option key={pos.id} value={pos.id}>
+                  {pos.label}
+                </option>
+              ))}
+            </select>
             <button
               onClick={() => toggleActive(p)}
               className={`btn h-10 shrink-0 px-2 text-xs ${

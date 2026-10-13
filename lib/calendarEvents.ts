@@ -31,6 +31,11 @@ function timeFromKickoff(iso: string | null | undefined): string | null {
 }
 
 function fixtureForMatch(match: Match, fixtures: IfaFixture[]): IfaFixture | null {
+  const key = match.ifa_key?.trim();
+  if (key) {
+    const byKey = fixtures.find((f) => ifaMatchKey(f.date, f.opponent) === key);
+    if (byKey) return byKey;
+  }
   return (
     fixtures.find((f) => f.date === match.match_date && namesMatch(match.opponent, f.opponent)) ??
     null
@@ -130,6 +135,84 @@ function collapseScheduledDuplicates(events: CalendarEvent[]): CalendarEvent[] {
   return [...others, ...kept];
 }
 
+function mergeMatchEvent(a: CalendarEvent, b: CalendarEvent): CalendarEvent {
+  const rank = (e: CalendarEvent) =>
+    (e.matchId ? 4 : 0) + (e.status === "finished" ? 2 : 0) + (e.score ? 1 : 0);
+  const primary = rank(a) >= rank(b) ? a : b;
+  const other = primary === a ? b : a;
+  return {
+    ...primary,
+    score: primary.score || other.score,
+    home: primary.home ?? other.home,
+    venue: primary.venue || other.venue,
+    time: primary.time || other.time,
+    kickoffAt: primary.kickoffAt || other.kickoffAt,
+    notes: primary.notes || other.notes,
+  };
+}
+
+function pickSameDayMatch(cluster: CalendarEvent[]): CalendarEvent {
+  const hasScore = cluster.some((e) => Boolean(e.score?.trim()));
+  const scheduled = cluster.filter((e) => e.status === "scheduled");
+  const finished = cluster.filter((e) => e.status === "finished" || e.status === "live");
+  if (!hasScore && finished.length > 0 && scheduled.length > 0) {
+    return scheduled.reduce(betterScheduledEvent);
+  }
+  return cluster.reduce(mergeMatchEvent);
+}
+
+/** כרטיס אחד ליום ליריבה — מונע כפילות מסד + התאחדות בכל הסטטוסים. */
+function collapseSameDayMatches(events: CalendarEvent[]): CalendarEvent[] {
+  const others = events.filter((e) => e.kind !== "match");
+  const matches = events.filter((e) => e.kind === "match");
+  const used = new Set<number>();
+  const kept: CalendarEvent[] = [];
+  for (let i = 0; i < matches.length; i++) {
+    if (used.has(i)) continue;
+    const cluster = [matches[i]];
+    used.add(i);
+    for (let j = i + 1; j < matches.length; j++) {
+      if (used.has(j)) continue;
+      if (matches[i].date !== matches[j].date) continue;
+      if (!sameFixture(matches[i], matches[j])) continue;
+      cluster.push(matches[j]);
+      used.add(j);
+    }
+    kept.push(pickSameDayMatch(cluster));
+  }
+  return [...others, ...kept];
+}
+
+function sameFixture(a: CalendarEvent, b: CalendarEvent): boolean {
+  if (a.date !== b.date) return false;
+  if (a.matchId && b.matchId && a.matchId === b.matchId) return true;
+  if (namesMatch(a.opponent, b.opponent)) return true;
+  return false;
+}
+
+/** יום עם משחק אחד במסד וכרטיס התאחדות יתום — כרטיס אחד, גם אם השמות לא זהים. */
+function collapseOrphanIfaSameDay(events: CalendarEvent[]): CalendarEvent[] {
+  const others = events.filter((e) => e.kind !== "match");
+  const matches = events.filter((e) => e.kind === "match");
+  const byDate = new Map<string, CalendarEvent[]>();
+  for (const event of matches) {
+    const list = byDate.get(event.date) ?? [];
+    list.push(event);
+    byDate.set(event.date, list);
+  }
+  const kept: CalendarEvent[] = [];
+  for (const list of byDate.values()) {
+    const db = list.filter((e) => Boolean(e.matchId));
+    const ifaOnly = list.filter((e) => !e.matchId);
+    if (db.length === 1 && ifaOnly.length > 0) {
+      kept.push(ifaOnly.reduce((acc, e) => mergeMatchEvent(acc, e), db[0]));
+    } else {
+      kept.push(...list);
+    }
+  }
+  return [...others, ...kept];
+}
+
 /** מאחד משחקים מהמסד עם לוח ההתאחדות, בלי כפילויות. */
 export function buildCalendarEvents(
   matches: Match[],
@@ -163,7 +246,9 @@ export function buildCalendarEvents(
     events.push(fromTraining(training));
   }
 
-  return collapseScheduledDuplicates(events).sort((a, b) => {
+  return collapseOrphanIfaSameDay(
+    collapseSameDayMatches(collapseScheduledDuplicates(events))
+  ).sort((a, b) => {
     const ak = a.kickoffAt ?? `${a.date}T12:00:00`;
     const bk = b.kickoffAt ?? `${b.date}T12:00:00`;
     const byTime = ak.localeCompare(bk);

@@ -28,6 +28,7 @@ create table if not exists public.matches (
   notes text not null default '',
   final_half int,
   final_minute int,
+  formation_id text,
   created_at timestamptz not null default now()
 );
 
@@ -54,7 +55,12 @@ create table if not exists public.events (
   action_type text not null check (action_type in (
     'key_pass','tackle','ball_loss','shot','goal','assist',
     'corner_for','corner_against',
-    'aerial_won','aerial_lost','ground_won','ground_lost'
+    'aerial_won','aerial_lost','ground_won','ground_lost',
+    'gk_save',
+    'gk_pass_ok','gk_pass_miss',
+    'gk_exit_ok','gk_exit_bad',
+    'gk_aerial_ok','gk_aerial_miss',
+    'gk_accurate_pass','gk_aerial','gk_exit'
   )),
   zone text check (zone in ('def','mid','att')),
   shot_location text check (shot_location in ('in_box','out_box')),
@@ -65,6 +71,8 @@ create table if not exists public.events (
 
 create index if not exists events_match_idx on public.events(match_id);
 create index if not exists events_created_idx on public.events(created_at);
+create index if not exists events_match_action_idx on public.events(match_id, action_type);
+create index if not exists matches_status_date_idx on public.matches(status, match_date desc);
 
 -- חילופים (פותח ↔ ספסל) לחישוב דקות משחק
 create table if not exists public.substitutions (

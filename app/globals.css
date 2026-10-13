@@ -649,6 +649,7 @@ table tbody tr:nth-child(even) td {
 .cal-peek-teams {
   margin-top: 16px;
   display: grid;
+  direction: ltr;
   grid-template-columns: 1fr auto 1fr;
   align-items: start;
   gap: 8px;
@@ -669,6 +670,12 @@ table tbody tr:nth-child(even) td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.cal-peek-role {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
 }
 
 .cal-peek-vs {

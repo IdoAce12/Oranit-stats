@@ -6,6 +6,7 @@ import { computeSeasonImpact, computeSeasonMinutesByKey } from "@/lib/impactScor
 import { matchIdsForTypes, OFFICIAL_MATCH_TYPES } from "@/lib/matchFilter";
 import { seasonKingLeaders, type KingLeader, type KingPlayer } from "@/lib/seasonKings";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import { filterFieldSeasonRows } from "@/lib/gk";
 
 function formatValue(leader: KingLeader): string {
   if (leader.id === "score") {
@@ -33,7 +34,11 @@ export function SeasonKingsBoard() {
         const subs = allowed
           ? bundle.substitutions.filter((s) => allowed.has(s.match_id))
           : bundle.substitutions;
-        const rows = computeSeasonImpact(events, players, bundle.squad, bundle.players);
+        const rows = filterFieldSeasonRows(
+          computeSeasonImpact(events, players, bundle.squad, bundle.players),
+          bundle.squad,
+          bundle.players
+        );
         const minutesByKey = computeSeasonMinutesByKey(players, subs, matches, events, bundle.squad);
         const kings: KingPlayer[] = rows.map((row) => ({
           key: row.key,

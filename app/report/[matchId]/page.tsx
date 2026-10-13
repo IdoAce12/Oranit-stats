@@ -15,9 +15,11 @@ import { computePlayerMatchStats, computeTeamTotals, PlayerMatchStats } from "@/
 import { buildMatchSummary, zoneHeatPercent } from "@/lib/matchSummary";
 import { clockDisplay, readClockState } from "@/lib/matchClock";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import { gkCountsTotal, playerIsGoalkeeper } from "@/lib/gk";
 import { MatchEvent, Match, Player, Substitution, ZONE_LABELS } from "@/lib/types";
 import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
+import { GkCardSheet } from "./GkCardSheet";
 import { PlayerCardSheet } from "./PlayerCardSheet";
 import { PageSkeleton } from "../../components/Skeleton";
 import { useAuth } from "../../components/AuthProvider";
@@ -95,6 +97,22 @@ export default function ReportPage() {
     if (cardPlayerId === undefined) return null;
     return playerStats.find((p) => p.playerId === cardPlayerId) ?? null;
   }, [cardPlayerId, playerStats]);
+
+  const gkRows = useMemo(
+    () =>
+      playerStats.filter((p) => {
+        const player = players.find((x) => x.id === p.playerId);
+        if (player && playerIsGoalkeeper(player)) return true;
+        return gkCountsTotal(p) > 0;
+      }),
+    [playerStats, players]
+  );
+  const gkIds = useMemo(() => new Set(gkRows.map((r) => r.playerId)), [gkRows]);
+  const fieldStats = useMemo(
+    () => playerStats.filter((p) => !gkIds.has(p.playerId)),
+    [playerStats, gkIds]
+  );
+  const selectedIsGk = selectedStats ? gkIds.has(selectedStats.playerId) : false;
 
   const defensiveLosses = useMemo(
     () =>
@@ -255,6 +273,76 @@ export default function ReportPage() {
             )}
           </section>
 
+          {gkRows.length > 0 && (
+            <section className="mb-5">
+              <h2 className="label mb-2">כרטיסי שוערים</h2>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                {gkRows
+                  .filter((p) => p.playerId !== null)
+                  .map((p) => (
+                    <button
+                      key={p.playerId!}
+                      onClick={() => setCardPlayerId(p.playerId)}
+                      className="card flex flex-col items-center py-3 active:scale-95"
+                    >
+                      <span className="text-xl font-black tabular">{p.shirtNumber}</span>
+                      <span className="mt-0.5 max-w-full truncate px-1 text-[11px] text-[var(--muted)]">
+                        {p.name}
+                      </span>
+                      <span className="mt-1 text-[10px] font-bold tabular text-violet-300">שוער</span>
+                      <span
+                        className={`mt-0.5 text-[11px] font-black tabular ${
+                          p.score > 0
+                            ? "text-[var(--accent)]"
+                            : p.score < 0
+                              ? "text-[var(--danger)]"
+                              : "text-[var(--muted)]"
+                        }`}
+                      >
+                        {p.score > 0 ? "+" : ""}
+                        {p.score.toFixed(1)}
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </section>
+          )}
+
+          <section className="mb-5">
+            <h2 className="label mb-2">כרטיסי שחקנים</h2>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {fieldStats
+                .filter((p) => p.playerId !== null)
+                .map((p) => (
+                  <button
+                    key={p.playerId!}
+                    onClick={() => setCardPlayerId(p.playerId)}
+                    className="card flex flex-col items-center py-3 active:scale-95"
+                  >
+                    <span className="text-xl font-black tabular">{p.shirtNumber}</span>
+                    <span className="mt-0.5 max-w-full truncate px-1 text-[11px] text-[var(--muted)]">
+                      {p.name}
+                    </span>
+                    <span className="mt-1 text-[10px] font-bold tabular text-[var(--accent)]">
+                      {p.minutesPlayed}׳
+                    </span>
+                    <span
+                      className={`mt-0.5 text-[11px] font-black tabular ${
+                        p.score > 0
+                          ? "text-[var(--accent)]"
+                          : p.score < 0
+                            ? "text-[var(--danger)]"
+                            : "text-[var(--muted)]"
+                      }`}
+                    >
+                      {p.score > 0 ? "+" : ""}
+                      {p.score.toFixed(1)}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          </section>
+
           <section className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
             <StatCard value={team.goals} label="שערים" tone="accent" />
             <StatCard value={team.assists} label="בישולים" tone="info" />
@@ -302,48 +390,60 @@ export default function ReportPage() {
           </section>
           )}
 
-          {/* כרטיסי שחקנים */}
-          <section className="mb-5">
-            <h2 className="label mb-2">כרטיסי שחקנים</h2>
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {playerStats
-                .filter((p) => p.playerId !== null)
-                .map((p) => (
-                  <button
-                    key={p.playerId!}
-                    onClick={() => setCardPlayerId(p.playerId)}
-                    className="card flex flex-col items-center py-3 active:scale-95"
-                  >
-                    <span className="text-xl font-black tabular">{p.shirtNumber}</span>
-                    <span className="mt-0.5 max-w-full truncate px-1 text-[11px] text-[var(--muted)]">
-                      {p.name}
-                    </span>
-                    <span className="mt-1 text-[10px] font-bold tabular text-[var(--accent)]">
-                      {p.minutesPlayed}׳
-                    </span>
-                    <span
-                      className={`mt-0.5 text-[11px] font-black tabular ${
-                        p.score > 0
-                          ? "text-[var(--accent)]"
-                          : p.score < 0
-                            ? "text-[var(--danger)]"
-                            : "text-[var(--muted)]"
-                      }`}
-                    >
-                      {p.score > 0 ? "+" : ""}
-                      {p.score.toFixed(1)}
-                    </span>
-                  </button>
-                ))}
-            </div>
-          </section>
+          {(gkCountsTotal(team) > 0 || gkRows.length > 0) && (
+            <section className="card mb-4 p-4">
+              <p className="label mb-3">שוערים — מדדים נפרדים</p>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                <StatCard value={team.gkSaves} label="הדיפת מפתח" tone="info" />
+                <StatCard value={`${team.gkPassOk}/${team.gkPassMiss}`} label="מסירה הגיע/לא" />
+                <StatCard value={`${team.gkAerialOk}/${team.gkAerialMiss}`} label="גובה הגיע/לא" tone="info" />
+                <StatCard value={`${team.gkExitOk}/${team.gkExitBad}`} label="יציאה טובה/לא" />
+              </div>
+            </section>
+          )}
+
+          {gkRows.length > 0 && (
+            <>
+              <MetricTable
+                title="דוח שוערים"
+                exportId="goalkeepers"
+                onExport={exportOne}
+                headers={["הדיפות", "מסירה ✓", "מסירה ✕", "גובה ✓", "גובה ✕", "יציאה ✓", "יציאה ✕", "דק׳"]}
+                rows={gkRows}
+                sortKey={(r) => r.gkSaves}
+                cells={(r) => [
+                  r.gkSaves,
+                  r.gkPassOk,
+                  r.gkPassMiss,
+                  r.gkAerialOk,
+                  r.gkAerialMiss,
+                  r.gkExitOk,
+                  r.gkExitBad,
+                  r.minutesPlayed,
+                ]}
+                cellLabels={(r) => [
+                  r.gkSaves,
+                  r.gkPassOk,
+                  r.gkPassMiss,
+                  r.gkAerialOk,
+                  r.gkAerialMiss,
+                  r.gkExitOk,
+                  r.gkExitBad,
+                  r.minutesPlayed,
+                ]}
+                onPlayer={setCardPlayerId}
+                accentCol={0}
+                showMinutes={false}
+              />
+            </>
+          )}
 
           <MetricTable
             title="דוח ציון (Impact)"
             exportId="scores"
             onExport={exportOne}
             headers={["ציון", "דקות"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.score}
             cells={(r) => [Number(r.score.toFixed(1)), r.minutesPlayed]}
             cellLabels={(r) => [
@@ -360,7 +460,7 @@ export default function ReportPage() {
             exportId="minutes"
             onExport={exportOne}
             headers={["דקות", "סטטוס"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.minutesPlayed}
             cells={(r) => [r.minutesPlayed]}
             cellLabels={(r) => [String(r.minutesPlayed), r.isStarter ? "פותח" : "ספסל"]}
@@ -403,7 +503,7 @@ export default function ReportPage() {
             exportId="tackles"
             onExport={exportOne}
             headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.tacklesTotal}
             cells={(r) => [r.tackles.def, r.tackles.mid, r.tackles.att, r.tacklesTotal]}
             onPlayer={setCardPlayerId}
@@ -415,7 +515,7 @@ export default function ReportPage() {
             exportId="losses"
             onExport={exportOne}
             headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.lossesTotal}
             cells={(r) => [r.losses.def, r.losses.mid, r.losses.att, r.lossesTotal]}
             onPlayer={setCardPlayerId}
@@ -427,7 +527,7 @@ export default function ReportPage() {
             exportId="key_passes"
             onExport={exportOne}
             headers={["הגנה", "אמצע", "התקפה", "סה״כ"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.keyPassesTotal}
             cells={(r) => [r.keyPasses.def, r.keyPasses.mid, r.keyPasses.att, r.keyPassesTotal]}
             onPlayer={setCardPlayerId}
@@ -439,7 +539,7 @@ export default function ReportPage() {
             exportId="goals"
             onExport={exportOne}
             headers={["שערים"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.goals}
             cells={(r) => [r.goals]}
             onPlayer={setCardPlayerId}
@@ -450,7 +550,7 @@ export default function ReportPage() {
             exportId="assists"
             onExport={exportOne}
             headers={["בישולים"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.assists}
             cells={(r) => [r.assists]}
             onPlayer={setCardPlayerId}
@@ -461,7 +561,7 @@ export default function ReportPage() {
             exportId="shots"
             onExport={exportOne}
             headers={["ברחבה", "מחוץ", "סה״כ"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.shotsTotal}
             cells={(r) => [r.shotsInBox, r.shotsOutBox, r.shotsTotal]}
             onPlayer={setCardPlayerId}
@@ -473,7 +573,7 @@ export default function ReportPage() {
             exportId="duels"
             onExport={exportOne}
             headers={["זכה", "הפסיד", "סה״כ"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.aerialWon + r.aerialLost}
             cells={(r) => [r.aerialWon, r.aerialLost, r.aerialWon + r.aerialLost]}
             onPlayer={setCardPlayerId}
@@ -487,7 +587,7 @@ export default function ReportPage() {
             exportId="duels"
             onExport={exportOne}
             headers={["זכה", "הפסיד", "סה״כ"]}
-            rows={playerStats}
+            rows={fieldStats}
             sortKey={(r) => r.groundWon + r.groundLost}
             cells={(r) => [r.groundWon, r.groundLost, r.groundWon + r.groundLost]}
             onPlayer={setCardPlayerId}
@@ -553,7 +653,15 @@ export default function ReportPage() {
         </>
       )}
 
-      {selectedStats && (
+      {selectedStats && selectedIsGk && (
+        <GkCardSheet
+          stats={selectedStats}
+          events={events}
+          opponent={match?.opponent}
+          onClose={() => setCardPlayerId(undefined)}
+        />
+      )}
+      {selectedStats && !selectedIsGk && (
         <PlayerCardSheet
           stats={selectedStats}
           events={events}

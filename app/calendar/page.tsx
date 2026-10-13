@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { deleteTraining, listMatches, listTrainings, upsertTraining } from "@/lib/db";
-import { requestIfaSync } from "@/lib/ifa/client";
+import { deleteTraining, getIfaCache, listDismissedIfaKeys, listMatches, listTrainings, upsertTraining } from "@/lib/db";
 import type { IfaFixture, IfaStandingRow } from "@/lib/ifa/parse";
 import { buildCalendarEvents, nextCalendarDate } from "@/lib/calendarEvents";
 import { israelToday, splitMatches } from "@/lib/fixtures";
@@ -34,24 +33,19 @@ export default function CalendarPage() {
     let cancelled = false;
     const run = async () => {
       try {
-        const rows = await listMatches();
-        if (!cancelled) setMatches(rows);
-        try {
-          const sessions = await listTrainings();
-          if (!cancelled) setTrainings(sessions);
-        } catch {
-          if (!cancelled) setTrainings([]);
-        }
-        const result = await requestIfaSync(false);
+        const [rows, sessions, cache, dismissed] = await Promise.all([
+          listMatches(),
+          listTrainings().catch(() => [] as Training[]),
+          getIfaCache().catch(() => null),
+          listDismissedIfaKeys().catch(() => [] as string[]),
+        ]);
         if (cancelled) return;
-        if (result) {
-          setStandings(result.standings ?? []);
-          setIfaFixtures(result.fixtures ?? []);
-          setDismissedKeys(result.dismissedKeys ?? []);
-          if ((result.inserted ?? 0) > 0 || (result.updated ?? 0) > 0 || (result.deleted ?? 0) > 0) {
-            const again = await listMatches();
-            if (!cancelled) setMatches(again);
-          }
+        setMatches(rows);
+        setTrainings(sessions);
+        setDismissedKeys(dismissed);
+        if (cache) {
+          setStandings(cache.standings ?? []);
+          setIfaFixtures(cache.fixtures ?? []);
         }
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "שגיאה");

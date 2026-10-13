@@ -25,6 +25,22 @@ describe("computeTeamTotals", () => {
     expect(t.cornersAgainst).toBe(1);
     expect(t.eventsTotal).toBe(8);
   });
+
+  it("סופר פעולות שוער", () => {
+    const events = [
+      action("gk", "gk_save"),
+      action("gk", "gk_pass_ok"),
+      action("gk", "gk_pass_miss"),
+      action("gk", "gk_aerial_ok"),
+      action("gk", "gk_exit_bad"),
+    ];
+    const t = computeTeamTotals(events);
+    expect(t.gkSaves).toBe(1);
+    expect(t.gkPassOk).toBe(1);
+    expect(t.gkPassMiss).toBe(1);
+    expect(t.gkAerialOk).toBe(1);
+    expect(t.gkExitBad).toBe(1);
+  });
 });
 
 describe("computePlayerMatchStats", () => {

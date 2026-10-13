@@ -1,3 +1,4 @@
+import { gkCountsTotal } from "./gk";
 import { MatchEvent, Player, Zone } from "./types";
 import { computeTeamTotals, TeamMatchTotals } from "./playerStats";
 
@@ -74,6 +75,14 @@ export function buildMatchSummary(events: MatchEvent[], _players: Player[]): Mat
   } else if (team.goals > 0) {
     insights.push({
       text: `כבשנו ${team.goals} שער${team.goals > 1 ? "ים" : ""}`,
+      tone: "good",
+    });
+  }
+
+  const gkTotal = gkCountsTotal(team);
+  if (gkTotal > 0) {
+    insights.push({
+      text: `שוער: ${team.gkSaves} הדיפות · מסירות ${team.gkPassOk}/${team.gkPassMiss} · גובה ${team.gkAerialOk}/${team.gkAerialMiss} · יציאות ${team.gkExitOk}/${team.gkExitBad}`,
       tone: "good",
     });
   }

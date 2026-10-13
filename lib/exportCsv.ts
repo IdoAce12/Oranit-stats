@@ -2,6 +2,7 @@ import { ACTION_LABELS, Match, MatchEvent, Player, SHOT_LABELS, Substitution, ZO
 import { computePlayerMatchStats, computeTeamTotals, PlayerMatchStats } from "./playerStats";
 import { buildMatchSummary } from "./matchSummary";
 import { SeasonImpact } from "./impactScore";
+import { gkCountsTotal } from "./gk";
 
 export type StatsOptions = {
   substitutions?: Substitution[];
@@ -35,6 +36,7 @@ export type ExportTableId =
   | "key_passes"
   | "shots"
   | "duels"
+  | "goalkeepers"
   | "coach"
   | "full"
   | "events"
@@ -234,6 +236,35 @@ function tableDuels(stats: PlayerMatchStats[]): string[] {
   return lines;
 }
 
+function tableGoalkeepers(stats: PlayerMatchStats[]): string[] {
+  const lines = [
+    "=== דוח שוערים ===",
+    joinRow(["מס׳", "שם", "דקות", "הדיפות", "מסירה הגיע", "מסירה לא הגיע", "גובה הגיע", "גובה לא הגיע", "יציאה טובה", "יציאה לא טובה", "ציון"]),
+  ];
+  const list = stats.filter((row) => gkCountsTotal(row) > 0);
+  if (list.length === 0) {
+    lines.push("אין נתוני שוער במשחק");
+    return lines;
+  }
+  for (const row of list.sort((a, b) => b.gkSaves - a.gkSaves || b.minutesPlayed - a.minutesPlayed)) {
+    lines.push(
+      joinRow([
+        ...playerRef(row),
+        row.minutesPlayed,
+        row.gkSaves,
+        row.gkPassOk,
+        row.gkPassMiss,
+        row.gkAerialOk,
+        row.gkAerialMiss,
+        row.gkExitOk,
+        row.gkExitBad,
+        formatScore(row.score),
+      ])
+    );
+  }
+  return lines;
+}
+
 function tableEvents(events: MatchEvent[], players: Player[]): string[] {
   const lines = [
     "=== לוג אירועים מלא ===",
@@ -344,6 +375,8 @@ export function exportTableCsv(
       return [...header, ...tableShots(stats, team)].join("\n");
     case "duels":
       return [...header, ...tableDuels(stats)].join("\n");
+    case "goalkeepers":
+      return [...header, ...tableGoalkeepers(stats)].join("\n");
     case "events":
       return [...header, ...tableEvents(events, players)].join("\n");
     case "coach":
@@ -378,6 +411,7 @@ export function matchReportToCsv(
   lines.push(...tableKeyPasses(stats, team.keyPasses), "");
   lines.push(...tableShots(stats, team), "");
   lines.push(...tableDuels(stats), "");
+  lines.push(...tableGoalkeepers(stats), "");
 
   lines.push("=== סיכום קבוצתי ===");
   lines.push(joinRow(["שערים", "בישולים", "קרנות לזכותנו", "קרנות לחובתנו", "סה״כ אירועים"]));
@@ -466,6 +500,7 @@ export const EXPORT_TABLE_LABELS: Record<Exclude<ExportTableId, "full" | "season
   key_passes: "מסירות מפתח",
   shots: "איומים",
   duels: "מאבקים",
+  goalkeepers: "שוערים",
   events: "לוג אירועים",
   coach: "סיכום משחק",
 };

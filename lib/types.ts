@@ -10,7 +10,17 @@ export type ActionType =
   | "aerial_won"
   | "aerial_lost"
   | "ground_won"
-  | "ground_lost";
+  | "ground_lost"
+  | "gk_save"
+  | "gk_pass_ok"
+  | "gk_pass_miss"
+  | "gk_exit_ok"
+  | "gk_exit_bad"
+  | "gk_aerial_ok"
+  | "gk_aerial_miss"
+  | "gk_accurate_pass"
+  | "gk_aerial"
+  | "gk_exit";
 
 export type Zone = "def" | "mid" | "att";
 
@@ -60,6 +70,7 @@ export interface Match {
   notes?: string;
   final_half?: number | null;
   final_minute?: number | null;
+  formation_id?: string | null;
 }
 
 // שחקן במשחק ספציפי (snapshot מהסגל)
@@ -153,6 +164,16 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   aerial_lost: "מאבק אוויר · הפסיד",
   ground_won: "מאבק קרקע · זכה",
   ground_lost: "מאבק קרקע · הפסיד",
+  gk_save: "הדיפת מפתח",
+  gk_pass_ok: "מסירה · הגיע",
+  gk_pass_miss: "מסירה · לא הגיע",
+  gk_exit_ok: "יציאה מהשער · טובה",
+  gk_exit_bad: "יציאה מהשער · לא טובה",
+  gk_aerial_ok: "כדור גובה · הגיע",
+  gk_aerial_miss: "כדור גובה · לא הגיע",
+  gk_accurate_pass: "מסירה · הגיע",
+  gk_aerial: "כדור גובה · הגיע",
+  gk_exit: "יציאה מהשער · טובה",
 };
 
 export const DUEL_KIND_LABELS: Record<DuelKind, string> = {

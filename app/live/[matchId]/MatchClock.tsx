@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react";
 import {
   ClockState,
   Half,
   clockDisplay,
   elapsedSeconds,
+  freezeClock,
   readClockState,
   writeClockState,
 } from "@/lib/matchClock";
@@ -15,7 +16,14 @@ interface Props {
   onChange: (half: Half, minute: number) => void;
 }
 
-export function MatchClock({ matchId, onChange }: Props) {
+export type MatchClockHandle = {
+  stop: () => { half: Half; minute: number };
+};
+
+export const MatchClock = forwardRef<MatchClockHandle, Props>(function MatchClock(
+  { matchId, onChange },
+  ref
+) {
   // קריאה סינכרונית — מונעת דריסת שעון רץ ב-localStorage בטעינה מחדש
   const [state, setState] = useState<ClockState>(() => readClockState(matchId));
   const [, forceTick] = useState(0);
@@ -41,6 +49,21 @@ export function MatchClock({ matchId, onChange }: Props) {
   useEffect(() => {
     onChange(state.half, minute);
   }, [state.half, minute, onChange]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      stop: () => {
+        const now = Date.now();
+        const frozen = freezeClock(state, now);
+        setState(frozen);
+        writeClockState(matchId, frozen);
+        const d = clockDisplay(frozen, now);
+        return { half: d.half, minute: d.minute };
+      },
+    }),
+    [matchId, state]
+  );
 
   const toggleRun = () => {
     setState((s) => {
@@ -123,4 +146,4 @@ export function MatchClock({ matchId, onChange }: Props) {
       </div>
     </div>
   );
-}
+});

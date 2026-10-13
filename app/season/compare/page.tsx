@@ -22,6 +22,7 @@ import { findRowByPlayerKey } from "@/lib/playerKey";
 import { attributeMatchEvents } from "@/lib/eventAttribution";
 import { formatRate, RateMode, rateOf, scaleSeasonForRadar } from "@/lib/rates";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import { filterFieldSeasonRows } from "@/lib/gk";
 import { withTimeout } from "@/lib/withTimeout";
 import {
   COMPARE_PALETTE,
@@ -195,7 +196,12 @@ function ComparePageInner() {
   );
 
   const rows = useMemo(
-    () => computeSeasonImpact(statsEvents, filteredPlayers, squad, players),
+    () =>
+      filterFieldSeasonRows(
+        computeSeasonImpact(statsEvents, filteredPlayers, squad, players),
+        squad,
+        players
+      ),
     [statsEvents, filteredPlayers, squad, players]
   );
 
@@ -232,7 +238,7 @@ function ComparePageInner() {
   );
 
   const allSeasonRows = useMemo(
-    () => computeSeasonImpact(events, players, squad),
+    () => filterFieldSeasonRows(computeSeasonImpact(events, players, squad), squad, players),
     [events, players, squad]
   );
 

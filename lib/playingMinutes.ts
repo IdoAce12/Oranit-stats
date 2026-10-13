@@ -4,6 +4,9 @@ import { Half, Match, Player, Substitution } from "./types";
 
 export const MAX_STARTERS = 10;
 
+/** דקה מעל זה היא באג שעון (למשל סיום משחק בלי עצירת טיימר). */
+export const MAX_REASONABLE_MINUTE = 120;
+
 export interface PlayerMinutes {
   playerId: string;
   minutesPlayed: number;
@@ -92,16 +95,22 @@ export function wasOnPitchAt(stints: PitchStint[], minute: number, finalMinute: 
   });
 }
 
+export function capInsaneMinute(minute: number): number {
+  if (!Number.isFinite(minute) || minute < 0) return 0;
+  if (minute > MAX_REASONABLE_MINUTE) return 90;
+  return minute;
+}
+
 export function resolveFinalMinute(
   match: Match | null,
   subs: Substitution[],
   eventsMaxMinute = 0
 ): number {
   if (match?.final_minute != null) {
-    return absMinute((match.final_half as Half) || 2, match.final_minute);
+    return capInsaneMinute(absMinute((match.final_half as Half) || 2, match.final_minute));
   }
   const fromSubs = Math.max(0, ...subs.map((s) => absMinute(s.half, s.match_minute)));
-  return Math.max(90, fromSubs, eventsMaxMinute);
+  return capInsaneMinute(Math.max(90, fromSubs, eventsMaxMinute));
 }
 
 /**
