@@ -129,7 +129,7 @@ export default function HomePage() {
     : null;
 
   return (
-    <main className="home-screen">
+    <main className={`home-screen${isCoach ? " has-feed" : ""}`}>
       <section className="home-hero">
         <PhotoCarousel />
 
@@ -155,6 +155,8 @@ export default function HomePage() {
           <ThemeToggle />
         </div>
       </header>
+
+      <div className="home-hero-gap" aria-hidden />
 
       <div className="home-bottom">
         <ConfigBanner />
