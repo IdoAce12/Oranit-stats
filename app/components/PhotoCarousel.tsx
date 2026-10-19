@@ -9,6 +9,7 @@ export function PhotoCarousel() {
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
   const startX = useRef<number | null>(null);
+  const startY = useRef<number | null>(null);
 
   const go = useCallback((dir: 1 | -1) => {
     setIndex((i) => (i + dir + CLUB_PHOTOS.length) % CLUB_PHOTOS.length);
@@ -22,14 +23,17 @@ export function PhotoCarousel() {
 
   const onPointerDown = (e: React.PointerEvent) => {
     startX.current = e.clientX;
+    startY.current = e.clientY;
     setPaused(true);
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
-    if (startX.current == null) return;
+    if (startX.current == null || startY.current == null) return;
     const dx = e.clientX - startX.current;
+    const dy = e.clientY - startY.current;
     startX.current = null;
-    if (Math.abs(dx) > 46) go(dx > 0 ? -1 : 1);
+    startY.current = null;
+    if (Math.abs(dx) > 46 && Math.abs(dx) > Math.abs(dy)) go(dx > 0 ? -1 : 1);
     window.setTimeout(() => setPaused(false), 4000);
   };
 
@@ -40,6 +44,7 @@ export function PhotoCarousel() {
       onPointerUp={onPointerUp}
       onPointerCancel={() => {
         startX.current = null;
+        startY.current = null;
       }}
     >
       {CLUB_PHOTOS.map((photo, i) => (

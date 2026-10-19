@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { getEvents, getMatch, getPlayers, getSubstitutions, reopenMatch, updateMatchNotes } from "@/lib/db";
+import { getPending } from "@/lib/eventQueue";
 import {
   downloadCsv,
   exportTableCsv,
@@ -21,6 +22,7 @@ import { AppHeader } from "../../components/AppHeader";
 import { LiveClockBadge } from "./LiveClockBadge";
 import { GkCardSheet } from "./GkCardSheet";
 import { PlayerCardSheet } from "./PlayerCardSheet";
+import { ReportEventLog } from "./ReportEventLog";
 import { PageSkeleton } from "../../components/Skeleton";
 import { useAuth } from "../../components/AuthProvider";
 
@@ -58,7 +60,10 @@ export default function ReportPage() {
         ]);
         setMatch(m);
         setPlayers(ps);
-        setEvents(evs);
+        const pendingForMatch = getPending().filter((e) => e.match_id === matchId);
+        const byId = new Map(evs.map((e) => [e.id, e]));
+        for (const row of pendingForMatch) byId.set(row.id, row);
+        setEvents([...byId.values()]);
         setSubs(subList);
         setNotes(m?.notes ?? "");
       } catch (e) {
@@ -228,7 +233,9 @@ export default function ReportPage() {
 
       {!isLive && isCoach && (
         <div className="mb-4 rounded-2xl border border-[var(--border)] bg-[var(--panel)] px-4 py-3 text-sm text-[var(--muted)]">
-          <p className="font-bold text-[var(--text)]">המשחק הושלם — אין יותר לייב או עריכת אירועים.</p>
+          <p className="font-bold text-[var(--text)]">
+            המשחק הושלם — אפשר לתקן אירועים ביומן שבתחתית הדוח, או לפתוח מחדש ללייב.
+          </p>
           <button
             onClick={handleReopen}
             disabled={reopening}
@@ -650,6 +657,16 @@ export default function ReportPage() {
             </button>
             )}
           </section>
+
+          <ReportEventLog
+            matchId={matchId}
+            match={match}
+            players={players}
+            events={events}
+            isCoach={isCoach}
+            onEventsChange={setEvents}
+            onError={setError}
+          />
         </>
       )}
 

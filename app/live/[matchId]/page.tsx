@@ -1000,7 +1000,7 @@ export default function LivePage() {
           <div className="sheet card w-full max-w-xs p-5 text-center" onClick={(e) => e.stopPropagation()}>
             <p className="text-lg font-extrabold">לסיים את המשחק?</p>
             <p className="mt-1 text-sm text-[var(--muted)]">
-              נסנכרן את כל האירועים ונעבור לדוח. אחרי הסיום אי אפשר לערוך או להוסיף אירועים.
+              נסנכרן את כל האירועים ונעבור לדוח. אחרי הסיום אפשר לתקן אירוע ספציפי ביומן שבתחתית הדוח.
             </p>
             <div className="mt-4 flex gap-2">
               <button onClick={() => setConfirmEnd(false)} className="btn btn-ghost flex-1 py-3">

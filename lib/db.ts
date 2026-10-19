@@ -505,6 +505,12 @@ export async function getEvents(matchId: string): Promise<MatchEvent[]> {
   return (data ?? []) as MatchEvent[];
 }
 
+export async function updateEventPlayer(id: string, playerId: string | null): Promise<void> {
+  const supabase = requireClient();
+  const { error } = await supabase.from("events").update({ player_id: playerId }).eq("id", id);
+  if (error) throw error;
+}
+
 // ---------------- נתונים עונתיים (כל המשחקים) ----------------
 
 export async function getAllPlayers(): Promise<Player[]> {
