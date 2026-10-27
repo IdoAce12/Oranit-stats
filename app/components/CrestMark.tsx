@@ -7,8 +7,10 @@ import beitarTovrok from "../../public/crests/beitar-tovrok.png";
 import bneiTira from "../../public/crests/bnei-tira.png";
 import hapoelPardesiya from "../../public/crests/hapoel-pardesiya.png";
 import hasharonNetanya from "../../public/crests/hasharon-netanya.png";
+import maccabiOranit from "../../public/crests/maccabi-oranit.png";
 import maccabiQlansawa from "../../public/crests/maccabi-qlansawa.png";
 import mkTaibe from "../../public/crests/mk-taibe.png";
+import nibrasKafrQasim from "../../public/crests/nibras-kafr-qasim.png";
 import shimshonBneiTaibe from "../../public/crests/shimshon-bnei-taibe.png";
 
 type StaticImg = string | { src: string };
@@ -22,8 +24,10 @@ const BUNDLED_CRESTS: Record<string, string> = {
   "/crests/bnei-tira.png": srcOf(bneiTira),
   "/crests/hapoel-pardesiya.png": srcOf(hapoelPardesiya),
   "/crests/hasharon-netanya.png": srcOf(hasharonNetanya),
+  "/crests/maccabi-oranit.png": srcOf(maccabiOranit),
   "/crests/maccabi-qlansawa.png": srcOf(maccabiQlansawa),
   "/crests/mk-taibe.png": srcOf(mkTaibe),
+  "/crests/nibras-kafr-qasim.png": srcOf(nibrasKafrQasim),
   "/crests/shimshon-bnei-taibe.png": srcOf(shimshonBneiTaibe),
 };
 

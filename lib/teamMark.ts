@@ -12,6 +12,11 @@ const LOCAL_CRESTS: { src: string; aliases: string[] }[] = [
   { src: "/crests/mk-taibe.png", aliases: ["מ.כ. טייבה", "מ.כ טייבה"] },
   { src: "/crests/bnei-tira.png", aliases: ["בני טירה"] },
   { src: "/crests/beitar-tovrok.png", aliases: ["בית״ר טוברוק", "בית\"ר טוברוק", "ביתר טוברוק"] },
+  {
+    src: "/crests/nibras-kafr-qasim.png",
+    aliases: ["ניבראס", "ניברס כפר קאסם", "כפר קאסם ניברס", "כפר קאסם ניבראס", "Nibras"],
+  },
+  { src: "/crests/maccabi-oranit.png", aliases: ["מכבי אורנית", "Maccabi Oranit"] },
 ];
 
 export function localCrestSrc(name: string): string | null {
